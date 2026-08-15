@@ -67,3 +67,8 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+
+cp-trustfulness/results/*
+cp-trustfulness/.cmdenv-log
+cp-trustfulness/.qtenvrc
+*__pycache__*

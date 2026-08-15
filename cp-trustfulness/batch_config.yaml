@@ -1,0 +1,88 @@
+# ==========================================
+# V2X Trust Evaluation - Batch Sweep Config
+# ==========================================
+
+# Block 1: Density Ablation
+# Baseline: 5% Faulty, random_noise, ETSI dynamic
+- id: "dens_00"
+  faulty_rate: 0.0
+  fault_profile: "random_noise"
+
+- id: "dens_01"
+  faulty_rate: 0.01
+  fault_profile: "random_noise"
+
+- id: "baseline_05" # Baseline
+  faulty_rate: 0.05
+  fault_profile: "random_noise"
+
+- id: "dens_10"
+  faulty_rate: 0.10
+  fault_profile: "random_noise"
+
+- id: "dens_20"
+  faulty_rate: 0.20
+  fault_profile: "random_noise"
+
+# Block 2: Profile Typology
+- id: "prof_drift"
+  faulty_rate: 0.05
+  fault_profile: "gradual_drift"
+
+- id: "prof_offset"
+  faulty_rate: 0.05
+  fault_profile: "constant_offset"
+
+# Block 3: Frequency & Saturation (Fixed Rates)
+- id: "freq_10Hz"
+  faulty_rate: 0.05
+  fault_profile: "random_noise"
+  cam_freq: 10
+  faulty_cam_freq: 10
+
+- id: "freq_1Hz"
+  faulty_rate: 0.05
+  fault_profile: "random_noise"
+  cam_freq: 1
+  faulty_cam_freq: 1
+
+# Block 4: Transmissive Fault Behavior
+# Spamming: Honest at ETSI, Faulty at 20Hz
+- id: "tx_spam"
+  faulty_rate: 0.05
+  fault_profile: "random_noise"
+  faulty_cam_freq: 20
+
+# On-off (Stealth): Honest at ETSI, Faulty at 1Hz
+- id: "tx_onoff"
+  faulty_rate: 0.05
+  fault_profile: "random_noise"
+  faulty_cam_freq: 1
+
+# Block 5: Worst-Case Cross-Sections
+# Stealth Drift in Congested Channel (1Hz)
+- id: "wc_stealth_drift"
+  faulty_rate: 0.05
+  fault_profile: "gradual_drift"
+  cam_freq: 1
+  faulty_cam_freq: 1
+
+# Absolute Stress: 20% + Congested Channel (1Hz) + Spamming (20Hz)
+- id: "wc_stress_spam"
+  faulty_rate: 0.20
+  fault_profile: "random_noise"
+  cam_freq: 1
+  faulty_cam_freq: 20
+
+# Block 6: Clean Channel Hypothesis
+- id: "prof_clean_base_10Hz"
+  faulty_rate: 0.0
+  fault_profile: "random_noise"
+  cam_freq: 10
+  faulty_cam_freq: 10
+
+- id: "prof_clean_low_10Hz"
+  faulty_rate: 0.01
+  fault_profile: "random_noise"
+  cam_freq: 10
+  faulty_cam_freq: 10
