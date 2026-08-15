@@ -1,0 +1,4 @@
+[submodule "artery"]
+	path = artery
+	url = https://github.com/gustavovonn/artery.git
+	branch = v2x-framework
