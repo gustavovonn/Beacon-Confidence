@@ -2,3 +2,9 @@
 	path = artery
 	url = https://github.com/gustavovonn/artery.git
 	branch = v2x-framework
+[submodule "sumo-scenarios/LuSTScenario"]
+	path = sumo-scenarios/LuSTScenario
+	url = https://github.com/lcodeca/LuSTScenario.git
+[submodule "sumo-scenarios/MoSTScenario"]
+	path = sumo-scenarios/MoSTScenario
+	url = https://github.com/lcodeca/MoSTScenario.git
