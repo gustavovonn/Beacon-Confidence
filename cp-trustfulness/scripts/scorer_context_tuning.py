@@ -6,7 +6,7 @@ import argparse
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
-from experiment import run_single_experiment
+from experiment import run_single_experiment, create_experiment_config
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 RESULTS_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "results"))
@@ -92,7 +92,7 @@ def main():
     print(f"Running {args.training_time} clean baseline on map '{args.map}' to learn physics...")
     
     # Run the baseline simulation in memory
-    metrics = run_single_experiment(
+    config = create_experiment_config(
         map_config=args.map,
         dr_alg=args.dr,
         trust_alg=args.trust,
@@ -101,7 +101,8 @@ def main():
         name=f"baseline_{args.map}",
         mode="headless"
     )
-    
+    metrics = run_single_experiment(config)
+
     if not metrics:
         print("[FAIL] Baseline simulation failed. Aborting auto-tune.")
         sys.exit(1)
@@ -130,9 +131,9 @@ def main():
         f"--*.node[*].middleware.DR.contextYawWeight={yaw_w:.6f}"
     ]
 
-    print(f"Injecting learned context weights into simulation...")
+    print("Injecting learned context weights into simulation...")
     
-    run_single_experiment(
+    config = create_experiment_config(
         map_config=args.map,
         dr_alg=args.dr,
         trust_alg=args.trust,
@@ -141,8 +142,8 @@ def main():
         faulty_rate=args.faulty_rate,
         name=f"tuned_{args.map}",
         mode="headless",
-        extra_args=omnet_overrides
     )
+    run_single_experiment(config, extra_args=omnet_overrides)
 
 if __name__ == "__main__":
     main()
