@@ -7,12 +7,16 @@
 namespace artery
 {
 
+
 struct TrustEvaluationParams {
-    double maxPosDev = 5.0;       // meters (acts as baseline intercept)
+
+    // Do not change values here.
+    // The source of truth must be the TrustService.ned file.
     
     // Context-Aware Dynamic Threshold parameters
-    double contextSpeedWeight = 1.20;
-    double contextYawWeight = 0.035;
+    double maxPosDev = 0.0;       // meters (acts as baseline intercept)
+    double contextSpeedWeight = 0.0;
+    double contextYawWeight = 0.0;
 };
 
 class ITrustEvaluator

@@ -17,9 +17,9 @@ simple TrustService like ItsG5Service
         string trustAlgorithm = default("BetaReputation");
 
         // Threshold parameters
-        double maxPositionDeviation @unit(m) = default(5m);
+        double maxPositionDeviation @unit(m) = default(30.85m);
         
         // Context-Aware Dynamic Threshold parameters
-        double contextSpeedWeight = default(1.20);
-        double contextYawWeight = default(0.035);
+        double contextSpeedWeight = default(0.9874);
+        double contextYawWeight = default(0.0387);
 }
