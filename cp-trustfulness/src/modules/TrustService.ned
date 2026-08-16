@@ -18,12 +18,6 @@ simple TrustService like ItsG5Service
 
         // Threshold parameters
         double maxPositionDeviation @unit(m) = default(5m);
-        double maxSpeedDeviation @unit(mps) = default(2mps);
-        double maxHeadingDeviation @unit(deg) = default(10deg);
-        
-        // Trust scoring parameters
-        double trustPenaltyFactor = default(0.5); // Lambda in exponential decay
-        double trustRecoveryRate = default(0.05); // Linear recovery per valid CAM
         
         // Context-Aware Dynamic Threshold parameters
         double contextSpeedWeight = default(1.20);

@@ -9,10 +9,6 @@ namespace artery
 
 struct TrustEvaluationParams {
     double maxPosDev = 5.0;       // meters (acts as baseline intercept)
-    double maxSpeedDev = 2.0;     // m/s
-    double maxHeadingDev = 10.0;  // degrees
-    double penaltyFactor = 0.5;   // lambda in exponential decay
-    double recoveryRate = 0.05;   // linear recovery rate
     
     // Context-Aware Dynamic Threshold parameters
     double contextSpeedWeight = 1.20;

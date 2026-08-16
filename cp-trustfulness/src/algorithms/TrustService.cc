@@ -74,10 +74,6 @@ void TrustService::initialize()
     m_trustEvaluator = TrustEvaluatorFactory::create(trustAlg);
 
     m_params.maxPosDev = par("maxPositionDeviation").doubleValue();
-    m_params.maxSpeedDev = par("maxSpeedDeviation").doubleValue();
-    m_params.maxHeadingDev = par("maxHeadingDeviation").doubleValue();
-    m_params.penaltyFactor = par("trustPenaltyFactor").doubleValue();
-    m_params.recoveryRate = par("trustRecoveryRate").doubleValue();
     m_params.contextSpeedWeight = par("contextSpeedWeight").doubleValue();
     m_params.contextYawWeight = par("contextYawWeight").doubleValue();
     m_historySize = par("historySize").intValue();
