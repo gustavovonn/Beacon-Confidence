@@ -31,7 +31,7 @@ git submodule update --init --recursive
 
 3. Prepare the Mobility Scenarios (LuST and MoST):
 ```bash
-./sumo-scenarios/setup_lust.sh
+./sumo-scenarios/lust_rush_config.sh
 ./sumo-scenarios/most_rush_config.sh
 ```
 
