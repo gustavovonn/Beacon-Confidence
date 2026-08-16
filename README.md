@@ -13,6 +13,7 @@ This repository hosts a V2X simulation framework based on an overlay architectur
 
 - Git
 - Docker
+- Python3 (3.14.x)
 
 *Note: The primary tested setup for this framework was on Ubuntu 24.04.4 LTS.*
 
@@ -33,6 +34,13 @@ git submodule update --init --recursive
 ```bash
 ./sumo-scenarios/lust_rush_config.sh
 ./sumo-scenarios/most_rush_config.sh
+```
+
+4. Install the Python3 dependencies. We recommend the creation of a virtual environment for this project, as follows:
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -r requirements.txt
 ```
 
 ## Build and Run
