@@ -16,7 +16,7 @@ import json
 import time
 from datetime import datetime
 import argparse
-from experiment import run_single_experiment
+from experiment import run_single_experiment, create_experiment_config
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 RESULTS_BASE = os.path.join(SCRIPT_DIR, "..", "results", "batch_sweeps")
@@ -32,7 +32,7 @@ def run_experiment(config, seed, batch_dir, global_args):
     
     # Run in memory via imported module
     try:
-        metrics = run_single_experiment(
+        config = create_experiment_config(
             map_config=global_args.map,
             dr_alg=global_args.dr,
             trust_alg=global_args.trust,
@@ -45,6 +45,7 @@ def run_experiment(config, seed, batch_dir, global_args):
             faulty_cam_freq=config.get("faulty_cam_freq"),
             seed=seed
         )
+        metrics = run_single_experiment(config)
     except Exception as e:
         print(f"\n[FATAL] Simulation {exp_name} crashed during execution: {e}")
         sys.exit(1)
@@ -154,7 +155,7 @@ def generate_report(csv_path, batch_dir):
         
         # Plot 1: F1-Score vs Config ID
         plt.figure(figsize=(12, 6))
-        ax = sns.barplot(x="ConfigID", y="F1_Score", data=df, palette="viridis")
+        ax = sns.barplot(x="ConfigID", y="F1_Score", hue="ConfigID", data=df, palette="viridis")
         plt.title("Faulty Vehicle Detection Efficacy (F1-Score) across Configurations", fontsize=14)
         plt.ylabel("F1-Score", fontsize=12)
         plt.xlabel("Ablation Configuration", fontsize=12)

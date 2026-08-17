@@ -14,6 +14,7 @@ import os
 import json
 import shutil
 from datetime import datetime
+from typing import TypedDict
 from io import StringIO
 from analyze_simulation import analyze_simulation, print_efficacy_report
 
@@ -28,6 +29,21 @@ sys.path.insert(0, SCRIPT_DIR)
 
 DR_MODELS = ["CTRA", "HistoryAwareCTRA"]
 TRUST_MODELS = ["BetaReputation"]
+
+
+class ExperimentConfig(TypedDict):
+    """Dictionary representing the configuration of a single experiment."""
+    map: str
+    dr_algorithm: str
+    trust_algorithm: str
+    time_limit: str
+    fault_profile: str
+    faulty_rate: float
+    seed: int
+    timestamp: str
+    experiment_dir: str
+    mode: str
+    status: str
 
 
 def create_experiment_dir(map_config, dr_alg, trust_alg, name=None):
@@ -127,8 +143,88 @@ def get_start_time_from_ini(map_config):
                 
     return start_time
 
-def run_simulation(map_config, dr_alg, trust_alg, time_limit=None, mode="headless", cam_freq=None, fault_profile=None, faulty_cam_freq=None, seed=None, extra_args=None):
+def create_experiment_config(
+    map_config,
+    dr_alg,
+    trust_alg,
+    time_limit=None,
+    name=None,
+    mode="headless",
+    cam_freq=None,
+    faulty_cam_freq=None,
+    fault_profile=None,
+    faulty_rate=None,
+    seed=None,
+) -> ExperimentConfig:
+    """Create a dictionary representing the experiment configuration."""
+    if time_limit:
+        start_time_offset = get_start_time_from_ini(map_config)
+        sumo_begin = get_sumo_begin_time(map_config)
+        duration_s = 0
+        if time_limit.endswith('s'):
+            try:
+                duration_s = int(time_limit[:-1])
+            except ValueError:
+                pass
+        else:
+            try:
+                duration_s = int(time_limit)
+            except ValueError:
+                pass
+
+        def seconds_to_hhmm(s):
+            h = (s // 3600) % 24
+            m = (s % 3600) // 60
+            sec = s % 60
+            return f"{h:02d}:{m:02d}:{sec:02d}"
+
+        sumo_start = sumo_begin + start_time_offset
+        sumo_end = sumo_start + duration_s
+        print(f"  Simulation Time: {duration_s}s. SUMO Scenario: {seconds_to_hhmm(sumo_start)} -> {seconds_to_hhmm(sumo_end)}")
+        
+    if cam_freq:
+        print(f"  CAM Frequency (All/Honest): {cam_freq} Hz (CBR)")
+    if faulty_cam_freq:
+        print(f"  Faulty Sensor CAM Frequency: {faulty_cam_freq} Hz")
+    if fault_profile:
+        print(f"  Sensor Fault Profile: {fault_profile}")
+    if faulty_rate is not None:
+        print(f"  Faulty Vehicle Ratio: {faulty_rate * 100:.1f}%")
+    if seed is not None:
+        print(f"  RNG Seed Set: {seed}")
+    if mode != "headless":
+        print(f"  Mode: {mode.upper()}")
+
+    experiment_path = create_experiment_dir(map_config, dr_alg, trust_alg, name)
+    print(f"  Experiment dir: {os.path.relpath(experiment_path, WORKSPACE_DIR)}")
+
+    config = {
+        "map": map_config,
+        "dr_algorithm": dr_alg,
+        "trust_algorithm": trust_alg,
+        "time_limit": time_limit or "35s",
+        "cam_freq_hz": cam_freq,
+        "faulty_cam_freq_hz": faulty_cam_freq,
+        "fault_profile": fault_profile or "constant_offset",
+        "faulty_rate": faulty_rate or 0.15,
+        "seed": seed or 0,
+        "timestamp": datetime.now().isoformat(),
+        "experiment_dir": experiment_path,
+        "mode": mode,
+        "status": "initialized",
+    }
+    return config
+
+def run_simulation(config: ExperimentConfig, mode="headless", extra_args=None):
     """Execute the simulation directly via opp_run (with or without Docker) and return success status."""
+    map_config = config["map"]
+    dr_alg = config["dr_algorithm"]
+    trust_alg = config["trust_algorithm"]
+    time_limit = config["time_limit"]
+    cam_freq = config["cam_freq_hz"]
+    faulty_cam_freq = config["faulty_cam_freq_hz"]
+    fault_profile = config["fault_profile"]
+    seed = config["seed"]
 
     # 1. Check if Docker is running
     use_docker = False
@@ -345,75 +441,25 @@ def print_summary_table(results_list):
     return table_str
 
 
-def run_single_experiment(map_config, dr_alg, trust_alg, time_limit=None, name=None, mode="headless", cam_freq=None, fault_profile=None, faulty_rate=None, faulty_cam_freq=None, seed=None, extra_args=None):
+def run_single_experiment(config: ExperimentConfig, extra_args=None):
     """Execute a complete experiment: simulate -> collect -> analyze -> archive."""
+
+    map_config = config["map"]
+    dr_alg = config["dr_algorithm"]
+    trust_alg = config["trust_algorithm"]
+    mode = config["mode"]
+    fault_profile = config["fault_profile"]
+    seed = config["seed"]
+    faulty_rate = config["faulty_rate"]
+    experiment_path = config["experiment_dir"]
+
     if faulty_rate is not None:
         update_faulty_rate(faulty_rate)
 
-    print(f"\n{'='*70}")
-    print(f"  EXPERIMENT: DR={dr_alg} | Trust={trust_alg} | Map={map_config}")
-    
-    if time_limit:
-        start_time_offset = get_start_time_from_ini(map_config)
-        sumo_begin = get_sumo_begin_time(map_config)
-        duration_s = 0
-        if time_limit.endswith('s'):
-            try:
-                duration_s = int(time_limit[:-1])
-            except ValueError:
-                pass
-        else:
-            try:
-                duration_s = int(time_limit)
-            except ValueError:
-                pass
-        finish_time = start_time_offset + duration_s
-
-        def seconds_to_hhmm(s):
-            h = (s // 3600) % 24
-            m = (s % 3600) // 60
-            sec = s % 60
-            return f"{h:02d}:{m:02d}:{sec:02d}"
-
-        sumo_start = sumo_begin + start_time_offset
-        sumo_end = sumo_start + duration_s
-        print(f"  Simulation Time: {duration_s}s. SUMO Scenario: {seconds_to_hhmm(sumo_start)} -> {seconds_to_hhmm(sumo_end)}")
-        
-    if cam_freq:
-        print(f"  CAM Frequency (All/Honest): {cam_freq} Hz (CBR)")
-    if faulty_cam_freq:
-        print(f"  Faulty Sensor CAM Frequency: {faulty_cam_freq} Hz")
-    if fault_profile:
-        print(f"  Sensor Fault Profile: {fault_profile}")
-    if faulty_rate is not None:
-        print(f"  Faulty Vehicle Ratio: {faulty_rate * 100:.1f}%")
-    if seed is not None:
-        print(f"  RNG Seed Set: {seed}")
-    if mode != "headless":
-        print(f"  Mode: {mode.upper()}")
     print(f"{'='*70}")
-
-    # 1. Create experiment directory
-    experiment_path = create_experiment_dir(map_config, dr_alg, trust_alg, name)
-    print(f"  Experiment dir: {os.path.relpath(experiment_path, WORKSPACE_DIR)}")
-
-    config = {
-        "map": map_config,
-        "dr_algorithm": dr_alg,
-        "trust_algorithm": trust_alg,
-        "time_limit": time_limit or "35s",
-        "cam_freq_hz": cam_freq,
-        "faulty_cam_freq_hz": faulty_cam_freq,
-        "fault_profile": fault_profile or "constant_offset",
-        "faulty_rate": faulty_rate or 0.15,
-        "seed": seed or 0,
-        "timestamp": datetime.now().isoformat(),
-        "experiment_dir": experiment_path,
-    }
-
     # 2. Run simulation
     print(f"\n  Running simulation (Mode: {mode})...")
-    success = run_simulation(map_config, dr_alg, trust_alg, time_limit, mode, cam_freq, fault_profile, faulty_cam_freq, seed, extra_args)
+    success = run_simulation(config, mode, extra_args)
     if not success:
         config["status"] = "simulation_failed"
         save_experiment(experiment_path, config, {})
@@ -450,7 +496,6 @@ def run_single_experiment(map_config, dr_alg, trust_alg, time_limit=None, name=N
     print(f"    Files: metrics.json | analysis_report.txt | config.json")
 
     return metrics
-
 
 
 def main():
@@ -504,7 +549,8 @@ def main():
         results_list = []
         for dr in DR_MODELS:
             for trust in TRUST_MODELS:
-                metrics = run_single_experiment(args.map, dr, trust, args.time_limit, mode=mode, cam_freq=args.cam_freq, fault_profile=args.fault_profile, faulty_rate=args.faulty_rate, faulty_cam_freq=args.faulty_cam_freq)
+                config = create_experiment_config(args.map, dr, trust, time_limit=args.time_limit, name=None, mode=mode, cam_freq=args.cam_freq, fault_profile=args.fault_profile, faulty_rate=args.faulty_rate, faulty_cam_freq=args.faulty_cam_freq, seed=args.seed)
+                metrics = run_single_experiment(config, extra_args=args.extra_args)
                 if metrics:
                     results_list.append(metrics)
 
@@ -530,7 +576,8 @@ def main():
         return
 
     # --- Single experiment mode ---
-    metrics = run_single_experiment(args.map, args.dr, args.trust, args.time_limit, args.name, mode=mode, cam_freq=args.cam_freq, fault_profile=args.fault_profile, faulty_rate=args.faulty_rate, faulty_cam_freq=args.faulty_cam_freq, seed=args.seed, extra_args=args.extra_args)
+    config = create_experiment_config(args.map, args.dr, args.trust, args.time_limit, args.name, mode=mode, cam_freq=args.cam_freq, fault_profile=args.fault_profile, faulty_rate=args.faulty_rate, faulty_cam_freq=args.faulty_cam_freq, seed=args.seed)
+    metrics = run_single_experiment(config, extra_args=args.extra_args)
     if not metrics:
         sys.exit(1)
 
