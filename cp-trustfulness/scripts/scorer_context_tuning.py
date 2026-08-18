@@ -79,7 +79,10 @@ def main():
     parser.add_argument("--fault-profile", type=str, default="random_noise", help="Cyber attack fault profile")
     parser.add_argument("--faulty-rate", type=float, default=0.15, help="Ratio of faulty vehicles for the Phase 3 Evaluation run (Phase 1 Training is always 0.0)")
     parser.add_argument("--training-time", default="45s", help="Duration for the baseline training run (Phase 1, default: 20s)")
-    
+    parser.add_argument("--start-time", "--start", default="RUSH_HOUR",
+                        help="Simulation start time. Can be specified as an integer, in seconds, as 0 or 25200, or as a \
+                        TimeOfDay enum name (e.g., MORNING, AFTERNOON, EVENING, RUSH_HOUR, NIGHT).")
+
     args = parser.parse_args()
 
     csv_file = DEFAULT_CSV
@@ -96,9 +99,10 @@ def main():
         map_config=args.map,
         dr_alg=args.dr,
         trust_alg=args.trust,
+        start_time=args.start_time,
         time_limit=args.training_time,
         faulty_rate=0.0,
-        name=f"baseline_{args.map}",
+        experiment_name=f"baseline_{args.map}",
         mode="headless"
     )
     metrics = run_single_experiment(config)
@@ -137,11 +141,12 @@ def main():
         map_config=args.map,
         dr_alg=args.dr,
         trust_alg=args.trust,
+        experiment_name=f"tuned_{args.map}",
+        start_time=args.start_time,
         time_limit=args.validation_time,
         fault_profile=args.fault_profile,
         faulty_rate=args.faulty_rate,
-        name=f"tuned_{args.map}",
-        mode="headless",
+        mode="headless"
     )
     run_single_experiment(config, extra_args=omnet_overrides)
 

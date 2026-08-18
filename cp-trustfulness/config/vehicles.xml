@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vehicles>
-    <vehicle type="src.modules.HonestCar" rate="0.95" />
-    <vehicle type="src.modules.FaultyCar" rate="0.5" />
+    <vehicle type="src.modules.HonestCar" rate="0.85" />
+    <vehicle type="src.modules.FaultyCar" rate="0.15" />
 </vehicles>
