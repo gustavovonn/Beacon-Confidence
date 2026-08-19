@@ -9,14 +9,16 @@ Single entry point for: simulation execution -> result collection -> analysis ->
 
 import subprocess
 import argparse
+import re
 import sys
 import os
 import json
 import shutil
 from datetime import datetime
-from typing import TypedDict
+from typing import Any, Optional, TypedDict
 from io import StringIO
 from analyze_simulation import analyze_simulation, print_efficacy_report
+from constants import ExperimentDefaults, TimeOfDay
 
 # Resolve paths relative to this script
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -33,9 +35,11 @@ TRUST_MODELS = ["BetaReputation"]
 
 class ExperimentConfig(TypedDict):
     """Dictionary representing the configuration of a single experiment."""
+    experiment_name: str
     map: str
     dr_algorithm: str
     trust_algorithm: str
+    start_time: int
     time_limit: str
     fault_profile: str
     faulty_rate: float
@@ -46,22 +50,20 @@ class ExperimentConfig(TypedDict):
     status: str
 
 
-def create_experiment_dir(map_config, dr_alg, trust_alg, name=None):
+def create_experiment_dir(experiment_name: str) -> str:
     """Create a timestamped experiment directory and return its path."""
     os.makedirs(EXPERIMENTS_DIR, exist_ok=True)
 
+    # TODO: capturar timestamp apenas uma vez, no início do script, e passar para cá como argumento
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
-    if name:
-        dirname = f"{timestamp}_{name}"
-    else:
-        dirname = f"{timestamp}_{map_config}_{dr_alg}_{trust_alg}"
+    dirname = f"{timestamp}_{experiment_name}"
 
     experiment_path = os.path.join(EXPERIMENTS_DIR, dirname)
     os.makedirs(experiment_path, exist_ok=True)
     return experiment_path
 
 
-def update_faulty_rate(rate):
+def update_faulty_rate(rate: float) -> None:
     """Dynamically update vehicles.xml with requested FaultyCar ratio."""
     xml_path = os.path.join(WORKSPACE_DIR, "cp-trustfulness", "config", "vehicles.xml")
     honest_rate = max(0.0, 1.0 - rate)
@@ -77,7 +79,7 @@ def update_faulty_rate(rate):
         f.write(content)
 
 
-def get_sumo_begin_time(map_config):
+def get_sumo_begin_time(map_config: str) -> int:
     """Parse the SUMO <begin> value from the .sumocfg referenced in omnetpp.ini."""
     ini_path = os.path.join(WORKSPACE_DIR, "cp-trustfulness", "omnetpp.ini")
     sumocfg_rel = None
@@ -107,7 +109,6 @@ def get_sumo_begin_time(map_config):
         return 0
 
     # Parse <begin value="..."/> from the XML
-    import re
     with open(sumocfg_path, 'r') as f:
         content = f.read()
     match = re.search(r'<begin\s+value="(\d+)"', content)
@@ -116,7 +117,61 @@ def get_sumo_begin_time(map_config):
     return 0
 
 
-def get_start_time_from_ini(map_config):
+def patch_sumocfg(map_config: str, start_time: int) -> None:
+    """Rewrite the <begin> value in the .sumocfg referenced by omnetpp.ini.
+
+    Mirrors what lust_rush_config.sh / most_rush_config.sh do for any map:
+    reads the sumocfg path from omnetpp.ini, replaces the existing <begin>
+    value with *start_time*, and verifies the patch before returning.
+    A no-op when the file already has the requested begin time.
+    """
+    ini_path = os.path.join(WORKSPACE_DIR, "cp-trustfulness", "omnetpp.ini")
+    sumocfg_rel = None
+
+    if not os.path.exists(ini_path):
+        print(f"  [WARN] omnetpp.ini not found; skipping sumocfg patch.")
+        return
+
+    in_target_config = False
+    with open(ini_path, 'r') as f:
+        for line in f:
+            stripped = line.strip()
+            if stripped.startswith('[Config '):
+                config_name = stripped.replace('[Config ', '').replace(']', '').strip()
+                in_target_config = (config_name == map_config)
+            if in_target_config and stripped.startswith('*.traci.launcher.sumocfg'):
+                sumocfg_rel = stripped.split('=')[1].split('#')[0].strip().strip('"')
+                break
+
+    if not sumocfg_rel:
+        print(f"  [WARN] No sumocfg entry found for config '{map_config}'; skipping patch.")
+        return
+
+    sumocfg_path = os.path.normpath(os.path.join(WORKSPACE_DIR, "cp-trustfulness", sumocfg_rel))
+    if not os.path.exists(sumocfg_path):
+        print(f"  [WARN] sumocfg not found at {sumocfg_path}; skipping patch.")
+        return
+
+    with open(sumocfg_path, 'r') as f:
+        content = f.read()
+
+    current = re.search(r'<begin\s+value="(\d+)"', content)
+    if current and int(current.group(1)) == start_time:
+        return  # Already correct, nothing to do.
+
+    patched = re.sub(r'<begin\s+value="\d+"', f'<begin value="{start_time}"', content)
+
+    if not re.search(rf'<begin\s+value="{start_time}"', patched):
+        print(f"  [ERROR] sumocfg patch failed for {sumocfg_path}. Check file format.")
+        return
+
+    with open(sumocfg_path, 'w') as f:
+        f.write(patched)
+
+    print(f"  [CFG] Patched {os.path.basename(sumocfg_path)}: begin time set to {start_time}s.")
+
+
+def get_start_time_from_ini(map_config: str) -> int:
     """Parse omnetpp.ini to find *.traci.core.startTime for the given map config."""
     ini_path = os.path.join(WORKSPACE_DIR, "cp-trustfulness", "omnetpp.ini")
     start_time = 0
@@ -144,70 +199,95 @@ def get_start_time_from_ini(map_config):
     return start_time
 
 def create_experiment_config(
-    map_config,
-    dr_alg,
-    trust_alg,
-    time_limit=None,
-    name=None,
-    mode="headless",
-    cam_freq=None,
-    faulty_cam_freq=None,
-    fault_profile=None,
-    faulty_rate=None,
-    seed=None,
+    map_config: str,
+    dr_alg: str,
+    trust_alg: str,
+    experiment_name: str | None,
+    start_time: int | TimeOfDay | None = None,
+    time_limit: str | None = None,
+    mode: str | None = None,
+    fault_profile: Optional[str] = None,
+    faulty_rate: Optional[float] = None,
+    seed: Optional[int] = None,
+    cam_freq: Optional[float] = None,
+    faulty_cam_freq: Optional[float] = None,
 ) -> ExperimentConfig:
     """Create a dictionary representing the experiment configuration."""
-    if time_limit:
-        start_time_offset = get_start_time_from_ini(map_config)
-        sumo_begin = get_sumo_begin_time(map_config)
-        duration_s = 0
-        if time_limit.endswith('s'):
-            try:
-                duration_s = int(time_limit[:-1])
-            except ValueError:
-                pass
-        else:
-            try:
-                duration_s = int(time_limit)
-            except ValueError:
-                pass
+    if experiment_name is None:
+        experiment_name = f"{map_config}_{dr_alg}_{trust_alg}"
+    if start_time is None:
+        start_time = ExperimentDefaults.start_time
+    if time_limit is None:
+        time_limit = ExperimentDefaults.time_limit
+    if mode is None:
+        mode = ExperimentDefaults.mode
+    if fault_profile is None:
+        fault_profile = ExperimentDefaults.fault_profile
+    if faulty_rate is None:
+        faulty_rate = ExperimentDefaults.faulty_rate
+    if seed is None:
+        seed = ExperimentDefaults.seed
 
-        def seconds_to_hhmm(s):
-            h = (s // 3600) % 24
-            m = (s % 3600) // 60
-            sec = s % 60
-            return f"{h:02d}:{m:02d}:{sec:02d}"
+    if isinstance(start_time, str):
+        try:
+            start_time = int(start_time)
+        except ValueError:
+            try:
+                start_time = TimeOfDay[start_time.upper()]
+            except KeyError:
+                print(f"[WARN] Invalid start time '{start_time}', defaulting to {ExperimentDefaults.start_time}s.")
+                start_time = ExperimentDefaults.start_time
+    if isinstance(start_time, TimeOfDay):
+        start_time = start_time.value
 
-        sumo_start = sumo_begin + start_time_offset
-        sumo_end = sumo_start + duration_s
-        print(f"  Simulation Time: {duration_s}s. SUMO Scenario: {seconds_to_hhmm(sumo_start)} -> {seconds_to_hhmm(sumo_end)}")
-        
-    if cam_freq:
+    duration_s = 0
+    if time_limit.endswith('s'):
+        try:
+            duration_s = int(time_limit[:-1])
+        except ValueError:
+            pass
+    else:
+        try:
+            duration_s = int(time_limit)
+        except ValueError:
+            pass
+
+    def seconds_to_hhmm(s: int) -> str:
+        h = (s // 3600) % 24
+        m = (s % 3600) // 60
+        sec = s % 60
+        return f"{h:02d}:{m:02d}:{sec:02d}"
+
+    sim_end = start_time + duration_s
+    print(f"  Simulation Time: {duration_s}s. SUMO Scenario: {seconds_to_hhmm(start_time)} -> {seconds_to_hhmm(sim_end)}")
+
+    if cam_freq is not None:
         print(f"  CAM Frequency (All/Honest): {cam_freq} Hz (CBR)")
-    if faulty_cam_freq:
+    if faulty_cam_freq is not None:
         print(f"  Faulty Sensor CAM Frequency: {faulty_cam_freq} Hz")
-    if fault_profile:
+    if fault_profile is not None:
         print(f"  Sensor Fault Profile: {fault_profile}")
     if faulty_rate is not None:
         print(f"  Faulty Vehicle Ratio: {faulty_rate * 100:.1f}%")
     if seed is not None:
         print(f"  RNG Seed Set: {seed}")
-    if mode != "headless":
+    if mode != ExperimentDefaults.mode:
         print(f"  Mode: {mode.upper()}")
 
-    experiment_path = create_experiment_dir(map_config, dr_alg, trust_alg, name)
+    experiment_path = create_experiment_dir(experiment_name)
     print(f"  Experiment dir: {os.path.relpath(experiment_path, WORKSPACE_DIR)}")
 
     config = {
         "map": map_config,
         "dr_algorithm": dr_alg,
         "trust_algorithm": trust_alg,
-        "time_limit": time_limit or "35s",
+        "start_time": start_time,
+        "time_limit": time_limit,
         "cam_freq_hz": cam_freq,
         "faulty_cam_freq_hz": faulty_cam_freq,
-        "fault_profile": fault_profile or "constant_offset",
-        "faulty_rate": faulty_rate or 0.15,
-        "seed": seed or 0,
+        "fault_profile": fault_profile,
+        "faulty_rate": faulty_rate,
+        "seed": seed,
         "timestamp": datetime.now().isoformat(),
         "experiment_dir": experiment_path,
         "mode": mode,
@@ -215,7 +295,7 @@ def create_experiment_config(
     }
     return config
 
-def run_simulation(config: ExperimentConfig, mode="headless", extra_args=None):
+def run_simulation(config: ExperimentConfig, mode: str = "headless", extra_args: Optional[list[str]] = None) -> bool:
     """Execute the simulation directly via opp_run (with or without Docker) and return success status."""
     map_config = config["map"]
     dr_alg = config["dr_algorithm"]
@@ -226,7 +306,22 @@ def run_simulation(config: ExperimentConfig, mode="headless", extra_args=None):
     fault_profile = config["fault_profile"]
     seed = config["seed"]
 
-    # 1. Check if Docker is running
+    # 1. Patch the sumocfg <begin> time when a non-zero start time is requested.
+    raw_start_time = config["start_time"]
+    start_time_s: int = raw_start_time.value if isinstance(raw_start_time, TimeOfDay) else int(raw_start_time)
+    if start_time_s:
+        patch_sumocfg(map_config, start_time_s)
+
+    # 2. Remove stale SQLite output files so OMNeT++ can create them fresh.
+    # Leftover .sca/.vec files from a previous (possibly crashed) run cause a
+    # 'disk I/O error' at t=0 when OMNeT++ tries to open them for writing.
+    sqlite_out_dir = os.path.join(RESULTS_BASE, "sqlite")
+    for suffix in [".sca", ".vec"]:
+        stale = os.path.join(sqlite_out_dir, f"{map_config}-#0{suffix}")
+        if os.path.exists(stale):
+            os.remove(stale)
+
+    # 3. Check if Docker is running
     use_docker = False
     try:
         res = subprocess.run(["docker", "ps", "--format", "{{.Names}}"], capture_output=True, text=True)
@@ -244,7 +339,7 @@ def run_simulation(config: ExperimentConfig, mode="headless", extra_args=None):
         scenario_dir = os.path.join(WORKSPACE_DIR, "cp-trustfulness")
         host_wrapper = ["bash", "-c"]
 
-    # 2. Construct EXTRA_ARGS
+    # 4. Construct EXTRA_ARGS
     extra = []
     if dr_alg: extra.append(f'--*.node[*].middleware.DR.drAlgorithm=\\"{dr_alg}\\"')
     if trust_alg: extra.append(f'--*.node[*].middleware.DR.trustAlgorithm=\\"{trust_alg}\\"')
@@ -265,7 +360,7 @@ def run_simulation(config: ExperimentConfig, mode="headless", extra_args=None):
         
     extra_str = " ".join(extra)
 
-    # 3. Construct Time Limit
+    # 5. Construct Time Limit
     if time_limit:
         start_time_offset = get_start_time_from_ini(map_config)
         if time_limit.endswith('s'):
@@ -277,7 +372,7 @@ def run_simulation(config: ExperimentConfig, mode="headless", extra_args=None):
             except:
                 pass
 
-    # 4. Construct internal Bash script
+    # 6. Construct internal Bash script
     u_flag = "Cmdenv"
     c_flag = map_config
     if mode == "qtenv":
@@ -336,7 +431,7 @@ def run_simulation(config: ExperimentConfig, mode="headless", extra_args=None):
     return True
 
 
-def collect_results(map_config, experiment_path):
+def collect_results(map_config: str, experiment_path: str) -> list[str]:
     """Copy simulation output files (.vec, .sca, logs) into the experiment directory."""
     collected = []
     
@@ -359,7 +454,7 @@ def collect_results(map_config, experiment_path):
     return collected
 
 
-def run_analysis(experiment_path, map_config):
+def run_analysis(experiment_path: str, map_config: str) -> Optional[dict[str, Any]]:
     """Run the canonical analysis engine on collected results.
     
     Returns:
@@ -398,7 +493,7 @@ def run_analysis(experiment_path, map_config):
     return clean_metrics
 
 
-def save_experiment(experiment_path, config, metrics):
+def save_experiment(experiment_path: str, config: dict[str, Any], metrics: dict[str, Any]) -> None:
     """Save experiment configuration and metrics as JSON files."""
     with open(os.path.join(experiment_path, "config.json"), "w") as f:
         json.dump(config, f, indent=2)
@@ -407,7 +502,7 @@ def save_experiment(experiment_path, config, metrics):
         json.dump(metrics, f, indent=2)
 
 
-def update_latest_link(experiment_path):
+def update_latest_link(experiment_path: str) -> None:
     """Update the results/latest symlink to point to this experiment."""
     latest_link = os.path.join(RESULTS_BASE, "latest")
     if os.path.islink(latest_link):
@@ -417,7 +512,7 @@ def update_latest_link(experiment_path):
     os.symlink(experiment_path, latest_link)
 
 
-def print_summary_table(results_list):
+def print_summary_table(results_list: list[dict[str, Any]]) -> str:
     """Print a formatted comparison table for sweep results."""
     lines = []
     lines.append("")
@@ -441,7 +536,7 @@ def print_summary_table(results_list):
     return table_str
 
 
-def run_single_experiment(config: ExperimentConfig, extra_args=None):
+def run_single_experiment(config: ExperimentConfig, extra_args: Optional[list[str]] = None) -> Optional[dict[str, Any]]:
     """Execute a complete experiment: simulate -> collect -> analyze -> archive."""
 
     map_config = config["map"]
@@ -498,7 +593,7 @@ def run_single_experiment(config: ExperimentConfig, extra_args=None):
     return metrics
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="V2X Trust Evaluation — Unified Experiment Orchestrator",
         formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -509,6 +604,9 @@ def main():
                         help="Dead Reckoning model (default: HistoryAwareCTRA)")
     parser.add_argument("--trust", default="BetaReputation", choices=TRUST_MODELS,
                         help="Trust evaluation algorithm (default: BetaReputation)")
+    parser.add_argument("--start-time", "--start", default="RUSH_HOUR",
+                        help="Simulation start time. Can be specified as an integer, in seconds, as 0 or 25200, or as a \
+                        TimeOfDay enum name (e.g., MORNING, AFTERNOON, EVENING, RUSH_HOUR, NIGHT).")
     parser.add_argument("--time-limit", "--time", default=None,
                         help="Simulation duration (e.g. 35s, 60s, 100s)")
     parser.add_argument("--gui", action="store_true",
@@ -539,7 +637,7 @@ def main():
 
     if args.sweep:
         sweep_name = args.name or f"sweep_{args.map}"
-        sweep_dir = create_experiment_dir(args.map, "sweep", "all", name=sweep_name)
+        sweep_dir = create_experiment_dir(sweep_name)
 
         print(f"\n{'='*70}")
         print(f"  MATRIX SWEEP: {len(DR_MODELS)} DR × {len(TRUST_MODELS)} Trust = {len(DR_MODELS) * len(TRUST_MODELS)} combinations")
@@ -549,7 +647,20 @@ def main():
         results_list = []
         for dr in DR_MODELS:
             for trust in TRUST_MODELS:
-                config = create_experiment_config(args.map, dr, trust, time_limit=args.time_limit, name=None, mode=mode, cam_freq=args.cam_freq, fault_profile=args.fault_profile, faulty_rate=args.faulty_rate, faulty_cam_freq=args.faulty_cam_freq, seed=args.seed)
+                config = create_experiment_config(
+                    args.map, 
+                    dr, 
+                    trust, 
+                    start_time=args.start_time, 
+                    time_limit=args.time_limit, 
+                    experiment_name=None, 
+                    mode=mode, 
+                    cam_freq=args.cam_freq, 
+                    fault_profile=args.fault_profile, 
+                    faulty_rate=args.faulty_rate, 
+                    faulty_cam_freq=args.faulty_cam_freq, 
+                    seed=args.seed
+                )
                 metrics = run_single_experiment(config, extra_args=args.extra_args)
                 if metrics:
                     results_list.append(metrics)
@@ -576,7 +687,20 @@ def main():
         return
 
     # --- Single experiment mode ---
-    config = create_experiment_config(args.map, args.dr, args.trust, args.time_limit, args.name, mode=mode, cam_freq=args.cam_freq, fault_profile=args.fault_profile, faulty_rate=args.faulty_rate, faulty_cam_freq=args.faulty_cam_freq, seed=args.seed)
+    config = create_experiment_config(
+        args.map,
+        args.dr,
+        args.trust,
+        experiment_name=args.name,
+        start_time=args.start_time,
+        time_limit=args.time_limit,
+        mode=mode,
+        cam_freq=args.cam_freq,
+        faulty_cam_freq=args.faulty_cam_freq,
+        fault_profile=args.fault_profile,
+        faulty_rate=args.faulty_rate,
+        seed=args.seed,
+    )
     metrics = run_single_experiment(config, extra_args=args.extra_args)
     if not metrics:
         sys.exit(1)

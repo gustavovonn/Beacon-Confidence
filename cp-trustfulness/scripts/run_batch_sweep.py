@@ -36,8 +36,9 @@ def run_experiment(config, seed, batch_dir, global_args):
             map_config=global_args.map,
             dr_alg=global_args.dr,
             trust_alg=global_args.trust,
+            experiment_name=exp_name,
+            start_time=global_args.start_time,
             time_limit=global_args.time,
-            name=exp_name,
             mode="headless",
             cam_freq=config.get("cam_freq"),
             fault_profile=config["fault_profile"],
@@ -70,6 +71,9 @@ def main():
     parser.add_argument("--map", type=str, default="lust", help="Map configuration")
     parser.add_argument("--dr", type=str, default="HistoryAwareCTRA", help="Dead Reckoning algorithm")
     parser.add_argument("--trust", type=str, default="BetaReputation", help="Trust Evaluation algorithm")
+    parser.add_argument("--start-time", "--start", default="RUSH_HOUR",
+                        help="Simulation start time. Can be specified as an integer, in seconds, as 0 or 25200, or as a \
+                        TimeOfDay enum name (e.g., MORNING, AFTERNOON, EVENING, RUSH_HOUR, NIGHT).")
     parser.add_argument("--time", type=str, default="45s", help="Simulation time limit")
     
     args = parser.parse_args()
