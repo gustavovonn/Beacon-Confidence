@@ -3,6 +3,7 @@
 
 #include "ITrustEvaluator.h"
 #include <memory>
+#include <deque>
 
 namespace artery
 {
@@ -10,16 +11,16 @@ namespace artery
 class ExponentialTrustEvaluator : public ITrustEvaluator
 {
 public:
-    double evaluateTrust(double currentTrust, double distError, const VehicleState& state,
-                         double actualSpeed, double actualHeading,
-                         const TrustEvaluationParams& params) override;
+    double evaluateTrust(std::deque<KinematicState> history, double currentTrust, double distError, const MotionVector& state,
+            double actualSpeed, double actualHeading,
+            const TrustEvaluationParams& params) override;
     std::string getName() const override { return "Exponential"; }
 };
 
 class MultiVectorTrustEvaluator : public ITrustEvaluator
 {
 public:
-    double evaluateTrust(double currentTrust, double distError, const VehicleState& state,
+    double evaluateTrust(std::deque<KinematicState> history, double currentTrust, double distError, const MotionVector& state,
                          double actualSpeed, double actualHeading,
                          const TrustEvaluationParams& params) override;
     std::string getName() const override { return "MultiVector"; }
@@ -28,7 +29,7 @@ public:
 class MahalanobisTrustEvaluator : public ITrustEvaluator
 {
 public:
-    double evaluateTrust(double currentTrust, double distError, const VehicleState& state,
+    double evaluateTrust(std::deque<KinematicState> history, double currentTrust, double distError, const MotionVector& state,
                          double actualSpeed, double actualHeading,
                          const TrustEvaluationParams& params) override;
     std::string getName() const override { return "Mahalanobis"; }
@@ -37,7 +38,7 @@ public:
 class BetaReputationTrustEvaluator : public ITrustEvaluator
 {
 public:
-    double evaluateTrust(double currentTrust, double distError, const VehicleState& state,
+    double evaluateTrust(std::deque<KinematicState> history, double currentTrust, double distError, const MotionVector& state,
                          double actualSpeed, double actualHeading,
                          const TrustEvaluationParams& params) override;
     std::string getName() const override { return "BetaReputation"; }

@@ -2,6 +2,7 @@
 #include "Constants.h"
 #include <cmath>
 #include <stdexcept>
+#include <deque>
 
 namespace artery
 {
@@ -22,44 +23,45 @@ namespace artery
         return std::sqrt(dx * dx + dy * dy);
     }
 
-    static void ctraIntegrateAndProject(VehicleState& state, double dt, double a, double w)
+    static void ctraIntegrateAndProject(const MotionVector& motionVector, KinematicState& nextState, double dt)
     {
-        const double latRad = state.lastLat * ConstantsWGS84::DEG_TO_RAD;
-        const double headingRad = state.lastHeading * ConstantsWGS84::DEG_TO_RAD;
+        const double latRad = motionVector.lat * ConstantsWGS84::DEG_TO_RAD;
+        const double headingRad = motionVector.heading * ConstantsWGS84::DEG_TO_RAD;
 
         const double R_phi = ConstantsWGS84::meridionalRadius(latRad);    // N-S [m]
         const double R_lambda = ConstantsWGS84::primeVerticalRadius(latRad); // E-W [m]
         const double cosLat = std::cos(latRad);
 
+        double a = motionVector.accel;
+        double w = motionVector.yawRate;
         // straight-line integration
         if (std::abs(w) < ConstantsApp::YAW_RATE_THRESHOLD)
         {
-            const double v = state.lastSpeed;
+            const double v = motionVector.speed;
             const double predictedSpeed = v + a * dt;
 
-            double dist;
+            double dist = v * dt + 0.5 * a * dt * dt;
             if (predictedSpeed <= 0.0 || dist < 0.0)
             {
                 dist = 0.0;
-                state.expectedSpeed = 0.0;
+                nextState.speed = 0.0;
             }
             else
             {
-                dist = v * dt + 0.5 * a * dt * dt;
-                state.expectedSpeed = predictedSpeed;
+                nextState.speed = predictedSpeed;
             }
 
             const double dy = dist * std::cos(headingRad); // North [m]
             const double dx = dist * std::sin(headingRad); // East  [m]
 
-            state.expectedLat = state.lastLat + dy / R_phi;
-            state.expectedLon = state.lastLon + dx / (R_lambda * cosLat);
-            state.expectedHeading = state.lastHeading; // unchanged in straight-line
+            nextState.lat = motionVector.lat + dy / R_phi;
+            nextState.lon = motionVector.lon + dx / (R_lambda * cosLat);
+            nextState.heading = motionVector.heading; // unchanged in straight-line
             return;
         }
 
         // curved path
-        const double v = state.lastSpeed;
+        const double v = motionVector.speed;
         const double v_dt = v + a * dt;           // v' = speed at end of interval
         const double newHeadingRad = headingRad + w * dt;  // θ' = heading at end of interval
 
@@ -77,26 +79,26 @@ namespace artery
         const double dy = inv_w     * (-v_dt * cosH1 + v * cosH0)
                         + a_over_w2 * (        sinH1     - sinH0);
 
-        state.expectedLat = state.lastLat + dy / R_phi;
-        state.expectedLon = state.lastLon + dx / (R_lambda * cosLat);
-        state.expectedSpeed = std::max(0.0, v_dt);
+        nextState.lat = motionVector.lat + dy / R_phi;
+        nextState.lon = motionVector.lon + dx / (R_lambda * cosLat);
+        nextState.speed = std::max(0.0, v_dt);
 
         // Normalise heading to [0°, 360°).
         double headingDeg = std::fmod(newHeadingRad * ConstantsWGS84::RAD_TO_DEG, 360.0);
         if (headingDeg < 0.0) headingDeg += 360.0;
-        state.expectedHeading = headingDeg;
+        nextState.heading = headingDeg;
     }
 
     // -----------------------------------------------------------------------------
     // Constant Velocity Model (CV)
     // -----------------------------------------------------------------------------
-    void CvDeadReckoningModel::predict(VehicleState& state, double dt)
+    void CvDeadReckoningModel::predict(std::deque<KinematicState> history, const MotionVector& motionVector, KinematicState& nextState, double dt)
     {
         // To be analysed
         throw std::runtime_error("To be analysed: CV model is to be implemented.");
     }
 
-    double CvDeadReckoningModel::computeError(const VehicleState& state, double actualLat, double actualLon,
+    double CvDeadReckoningModel::computeError(const MotionVector& state, double actualLat, double actualLon,
                                             double actualSpeed, double actualHeading)
     {
         // To be analysed
@@ -106,13 +108,13 @@ namespace artery
     // -----------------------------------------------------------------------------
     // Constant Acceleration Model (CA)
     // -----------------------------------------------------------------------------
-    void CaDeadReckoningModel::predict(VehicleState& state, double dt)
+    void CaDeadReckoningModel::predict(std::deque<KinematicState> history, const MotionVector& motionVector, KinematicState& nextState, double dt)
     {
         // To be analysed
         throw std::runtime_error("To be analysed: CA model is to be implemented.");
     }
 
-    double CaDeadReckoningModel::computeError(const VehicleState& state, double actualLat, double actualLon,
+    double CaDeadReckoningModel::computeError(const MotionVector& motionVector, double actualLat, double actualLon,
                                             double actualSpeed, double actualHeading)
     {
         // To be analysed
@@ -122,28 +124,28 @@ namespace artery
     // -----------------------------------------------------------------------------
     // Constant Turn Rate & Acceleration Model (CTRA)
     // -----------------------------------------------------------------------------
-    void CtraDeadReckoningModel::predict(VehicleState& state, double dt)
+    void CtraDeadReckoningModel::predict(std::deque<KinematicState> history, const MotionVector& motionVector, KinematicState& nextState, double dt)
     {
         if (dt <= 0.0) return;
-        ctraIntegrateAndProject(state, dt, state.lastAccel, state.lastYawRate);
+        ctraIntegrateAndProject(motionVector, nextState, dt);
     }
 
-    double CtraDeadReckoningModel::computeError(const VehicleState& state, double actualLat, double actualLon,
+    double CtraDeadReckoningModel::computeError(const MotionVector& motionVector, double actualLat, double actualLon,
                                                 double actualSpeed, double actualHeading)
     {
-        return computeGeoDistance(state.expectedLat, state.expectedLon, actualLat, actualLon);
+        return computeGeoDistance(motionVector.lat, motionVector.lon, actualLat, actualLon);
     }
 
     // -----------------------------------------------------------------------------
     // Extended Kalman Filter Model (EKF)
     // -----------------------------------------------------------------------------
-    void EkfDeadReckoningModel::predict(VehicleState& state, double dt)
+    void EkfDeadReckoningModel::predict(std::deque<KinematicState> history, const MotionVector& motionVector, KinematicState& nextState, double dt)
     {
         // To be analysed
         throw std::runtime_error("To be analysed: EKF model is to be implemented.");
     }
 
-    double EkfDeadReckoningModel::computeError(const VehicleState& state, double actualLat, double actualLon,
+    double EkfDeadReckoningModel::computeError(const MotionVector& state, double actualLat, double actualLon,
                                             double actualSpeed, double actualHeading)
     {
         // To be analysed
@@ -163,15 +165,15 @@ namespace artery
         return previousHeading + diff;
     }
 
-    void HistoryAwareCtraModel::predict(VehicleState& state, double dt)
+    void HistoryAwareCtraModel::predict(std::deque<KinematicState> history, const MotionVector& motionVector, KinematicState& nextState, double dt)
     {
         if (dt <= 0.0) return;
 
         // Not enough history for a meaningful OLS fit: delegate to single-step CTRA.
-        if (state.history.size() < 3)
+        if (history.size() < 3)
         {
             CtraDeadReckoningModel fallback;
-            fallback.predict(state, dt);
+            fallback.predict(history, motionVector, nextState, dt);
             return;
         }
 
@@ -179,15 +181,15 @@ namespace artery
         double sum_t  = 0.0, sum_v  = 0.0, sum_h  = 0.0;
         double sum_t2 = 0.0, sum_tv = 0.0, sum_th = 0.0;
 
-        const double t0 = state.history.front().time.dbl();
-        double prevHeading = state.history.front().heading;
-        const size_t n = state.history.size();
+        const double t0 = history.front().time.dbl();
+        double prevHeading = history.front().heading;
+        const size_t n = history.size();
 
         for (size_t i = 0; i < n; ++i)
         {
-            const double t = state.history[i].time.dbl() - t0;
-            const double v = state.history[i].speed;
-            double h = state.history[i].heading;
+            const double t = history[i].time.dbl() - t0;
+            const double v = history[i].speed;
+            double h = history[i].heading;
 
             if (i > 0)
             {
@@ -210,8 +212,8 @@ namespace artery
         if (std::abs(denom) < ConstantsApp::OLS_DENOM_THRESHOLD)
         {
             // Degenerate fit (all timestamps nearly identical): keep last-known values.
-            a = state.lastAccel;
-            w = state.lastYawRate;
+            a = motionVector.accel;
+            w = motionVector.yawRate;
         }
         else
         {
@@ -220,13 +222,14 @@ namespace artery
             w = w_deg * ConstantsWGS84::DEG_TO_RAD;
         }
 
-        ctraIntegrateAndProject(state, dt, a, w);
+        const MotionVector vec{};
+        ctraIntegrateAndProject(vec, nextState, dt);
     }
 
-    double HistoryAwareCtraModel::computeError(const VehicleState& state, double actualLat, double actualLon,
+    double HistoryAwareCtraModel::computeError(const MotionVector& state, double actualLat, double actualLon,
                                                 double actualSpeed, double actualHeading)
     {
-        return computeGeoDistance(state.expectedLat, state.expectedLon, actualLat, actualLon);
+        return computeGeoDistance(state.lat, state.lon, actualLat, actualLon);
     }
 
     // -----------------------------------------------------------------------------

@@ -10,7 +10,7 @@ namespace artery
 // -----------------------------------------------------------------------------
 // Exponential Distance Penalty Evaluator
 // -----------------------------------------------------------------------------
-double ExponentialTrustEvaluator::evaluateTrust(double currentTrust, double distError, const VehicleState& state,
+double ExponentialTrustEvaluator::evaluateTrust(std::deque<KinematicState> history, double currentTrust, double distError, const MotionVector& state,
                                                 double actualSpeed, double actualHeading,
                                                 const TrustEvaluationParams& params)
 {
@@ -21,7 +21,7 @@ double ExponentialTrustEvaluator::evaluateTrust(double currentTrust, double dist
 // -----------------------------------------------------------------------------
 // Multi-Vector Composite Evaluator (Position + Speed + Heading)
 // -----------------------------------------------------------------------------
-double MultiVectorTrustEvaluator::evaluateTrust(double currentTrust, double distError, const VehicleState& state,
+double MultiVectorTrustEvaluator::evaluateTrust(std::deque<KinematicState> history, double currentTrust, double distError, const MotionVector& state,
                                                 double actualSpeed, double actualHeading,
                                                 const TrustEvaluationParams& params)
 {
@@ -32,7 +32,7 @@ double MultiVectorTrustEvaluator::evaluateTrust(double currentTrust, double dist
 // -----------------------------------------------------------------------------
 // Mahalanobis Anomaly Metric Evaluator
 // -----------------------------------------------------------------------------
-double MahalanobisTrustEvaluator::evaluateTrust(double currentTrust, double distError, const VehicleState& state,
+double MahalanobisTrustEvaluator::evaluateTrust(std::deque<KinematicState> history, double currentTrust, double distError, const MotionVector& state,
                                                 double actualSpeed, double actualHeading,
                                                 const TrustEvaluationParams& params)
 {
@@ -43,7 +43,7 @@ double MahalanobisTrustEvaluator::evaluateTrust(double currentTrust, double dist
 // -----------------------------------------------------------------------------
 // Beta Reputation System Evaluator
 // -----------------------------------------------------------------------------
-double BetaReputationTrustEvaluator::evaluateTrust(double currentTrust, double distError, const VehicleState& state,
+double BetaReputationTrustEvaluator::evaluateTrust(std::deque<KinematicState> history, double currentTrust, double distError, const MotionVector& state,
                                                    double actualSpeed, double actualHeading,
                                                    const TrustEvaluationParams& params)
 {
@@ -54,14 +54,14 @@ double BetaReputationTrustEvaluator::evaluateTrust(double currentTrust, double d
 
     // --- Context-Aware Dynamic Threshold ---
     // Extract channel congestion (dt)
-    double dt = omnetpp::simTime().dbl() - state.lastCamTime.dbl();
+    double dt = omnetpp::simTime().dbl() - state.time.dbl();
     if (dt <= 0.0) dt = 0.1;
     
     // Applying offline optimized weights:
     // dynamicMaxPosDev = base (5.0) + speedWeight*(speed*dt) + yawWeight*(yawRate*speed)
     double dynamicMaxPosDev = params.maxPosDev 
                             + params.contextSpeedWeight * (actualSpeed * dt) 
-                            + params.contextYawWeight * (std::abs(state.lastYawRate) * actualSpeed);
+                            + params.contextYawWeight * (std::abs(state.yawRate) * actualSpeed);
 
     // --- Update Beta Coefficients ---
     if (distError <= dynamicMaxPosDev) {
@@ -71,16 +71,16 @@ double BetaReputationTrustEvaluator::evaluateTrust(double currentTrust, double d
         // Checkinkg Centroid Deviation
         // Calculate the actual time span from the oldest history packet to now
         double actualTimeWindow = 0.1;
-        if (!state.history.empty()) {
-            actualTimeWindow = omnetpp::simTime().dbl() - state.history.front().time.dbl();
+        if (!history.empty()) {
+            actualTimeWindow = omnetpp::simTime().dbl() - history.front().time.dbl();
         }
 
         // factor 0.75 is just a geometric heuristic: 0.5 lateral max dev + 0.25 overshoot
         double expectedCentroidLimit = (actualSpeed * actualTimeWindow * 0.75) + dynamicMaxPosDev;
         
-        bool centroidCheckPassed = (!state.history.empty() && state.lastCentroidDeviation <= expectedCentroidLimit);
+        bool centroidCheckPassed = (!history.empty() && state.centroidDeviation <= expectedCentroidLimit);
         
-        // std::cout << "[DEBUG] distError=" << distError << ", centroidDev=" << state.lastCentroidDeviation 
+        // std::cout << "[DEBUG] distError=" << distError << ", centroidDev=" << state.centroidDeviation 
         //           << ", limit=" << expectedCentroidLimit << ", passed=" << centroidCheckPassed << std::endl;
 
         if (centroidCheckPassed) {

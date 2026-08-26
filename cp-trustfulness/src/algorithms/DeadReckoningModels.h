@@ -11,8 +11,8 @@ namespace artery
 class CvDeadReckoningModel : public IDeadReckoningModel
 {
 public:
-    void predict(VehicleState& state, double dt) override;
-    double computeError(const VehicleState& state, double actualLat, double actualLon,
+    void predict(std::deque<KinematicState> history, const MotionVector& motionVector, KinematicState& nextState, double dt) override;
+    double computeError(const MotionVector& state, double actualLat, double actualLon,
                         double actualSpeed, double actualHeading) override;
     std::string getName() const override { return "CV"; }
 };
@@ -20,8 +20,8 @@ public:
 class CaDeadReckoningModel : public IDeadReckoningModel
 {
 public:
-    void predict(VehicleState& state, double dt) override;
-    double computeError(const VehicleState& state, double actualLat, double actualLon,
+    void predict(std::deque<KinematicState> history, const MotionVector& motionVector, KinematicState& nextState, double dt) override;
+    double computeError(const MotionVector& state, double actualLat, double actualLon,
                         double actualSpeed, double actualHeading) override;
     std::string getName() const override { return "CA"; }
 };
@@ -29,8 +29,8 @@ public:
 class CtraDeadReckoningModel : public IDeadReckoningModel
 {
 public:
-    void predict(VehicleState& state, double dt) override;
-    double computeError(const VehicleState& state, double actualLat, double actualLon,
+    void predict(std::deque<KinematicState> history, const MotionVector& motionVector, KinematicState& nextState, double dt) override;
+    double computeError(const MotionVector& state, double actualLat, double actualLon,
                         double actualSpeed, double actualHeading) override;
     std::string getName() const override { return "CTRA"; }
 };
@@ -38,8 +38,8 @@ public:
 class EkfDeadReckoningModel : public IDeadReckoningModel
 {
 public:
-    void predict(VehicleState& state, double dt) override;
-    double computeError(const VehicleState& state, double actualLat, double actualLon,
+    void predict(std::deque<KinematicState> history, const MotionVector& motionVector, KinematicState& nextState, double dt) override;
+    double computeError(const MotionVector& state, double actualLat, double actualLon,
                         double actualSpeed, double actualHeading) override;
     std::string getName() const override { return "EKF"; }
 };
@@ -47,8 +47,8 @@ public:
 class HistoryAwareCtraModel : public IDeadReckoningModel
 {
 public:
-    void predict(VehicleState& state, double dt) override;
-    double computeError(const VehicleState& state, double actualLat, double actualLon,
+    void predict(std::deque<KinematicState> history, const MotionVector& motionVector, KinematicState& nextState, double dt) override;
+    double computeError(const MotionVector& state, double actualLat, double actualLon,
                         double actualSpeed, double actualHeading) override;
     std::string getName() const override { return "HistoryAwareCTRA"; }
 private:

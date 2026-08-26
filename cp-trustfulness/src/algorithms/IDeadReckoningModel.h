@@ -8,7 +8,7 @@
 namespace artery
 {
 
-struct CamSnapshot {
+struct KinematicState {
     double lat = 0.0;
     double lon = 0.0;
     double speed = 0.0;
@@ -16,26 +16,22 @@ struct CamSnapshot {
     omnetpp::SimTime time;
 };
 
-struct VehicleState {
+struct MotionVector {
+    // TODO: MotionVector contém KinematicState(?)
+    // TODO: remover stationId de MotionVector
     long stationId = 0;
-    double lastLat = 0.0;      // in degrees
-    double lastLon = 0.0;      // in degrees
-    double lastSpeed = 0.0;    // in m/s
-    double lastHeading = 0.0;  // in degrees from North
-    double lastAccel = 0.0;    // in m/s^2
-    double lastYawRate = 0.0;  // in rad/s
-    omnetpp::SimTime lastCamTime;
-
-    double expectedLat = 0.0;
-    double expectedLon = 0.0;
-    double expectedSpeed = 0.0;
-    double expectedHeading = 0.0;
+    double lat = 0.0;      // in degrees
+    double lon = 0.0;      // in degrees
+    double speed = 0.0;    // in m/s
+    double heading = 0.0;  // in degrees from North
+    double accel = 0.0;    // in m/s^2
+    double yawRate = 0.0;  // in rad/s
+    omnetpp::SimTime time;
 
     double trustScore = 1.0;
     
-    std::deque<CamSnapshot> history;
-    double lastPredictionError = 0.0;
-    double lastCentroidDeviation = 0.0;
+    double predictionError = 0.0;
+    double centroidDeviation = 0.0;
 };
 
 class IDeadReckoningModel
@@ -44,10 +40,10 @@ public:
     virtual ~IDeadReckoningModel() = default;
 
     // Predict vehicle state forward over delta time (dt in seconds)
-    virtual void predict(VehicleState& state, double dt) = 0;
+    virtual void predict(std::deque<KinematicState> history, const MotionVector& motionVector, KinematicState& nextState, double dt) = 0;
 
     // Compute spatial position error in meters between actual received CAM and predicted expected state
-    virtual double computeError(const VehicleState& state, double actualLat, double actualLon,
+    virtual double computeError(const MotionVector& state, double actualLat, double actualLon,
                                 double actualSpeed, double actualHeading) = 0;
 
     virtual std::string getName() const = 0;

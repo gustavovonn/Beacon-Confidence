@@ -3,6 +3,7 @@
 
 #include "IDeadReckoningModel.h"
 #include <string>
+#include <list>
 
 namespace artery
 {
@@ -25,7 +26,7 @@ public:
     virtual ~ITrustEvaluator() = default;
 
     // Evaluate and return updated trust score in range [0.0, 1.0]
-    virtual double evaluateTrust(double currentTrust, double distError, const VehicleState& state,
+    virtual double evaluateTrust(std::deque<KinematicState> history, double currentTrust, double distError, const MotionVector& state,
                                  double actualSpeed, double actualHeading,
                                  const TrustEvaluationParams& params) = 0;
 
