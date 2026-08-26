@@ -74,3 +74,4 @@ cp-trustfulness/.qtenvrc
 *__pycache__*
 latex/
 paper/
+.venv/*
