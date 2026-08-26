@@ -74,3 +74,6 @@ cp-trustfulness/.qtenvrc
 *__pycache__*
 latex/
 paper/
+references/
+veremi-extension/data/
+veremi-extension/parquet
