@@ -50,11 +50,12 @@ if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
     docker rm -f "$CONTAINER_NAME"
 fi
 
-# --- Step 5: Start the persistent container ---
+# --- Step 5: Start the persistent container (running as host UID:GID to prevent permission conflicts) ---
 echo "[START] Starting container '$CONTAINER_NAME'..."
 docker run -d \
     --name "$CONTAINER_NAME" \
     --shm-size=4g \
+    --user $(id -u):$(id -g) \
     --ipc=host \
     -e DISPLAY="$DISPLAY" \
     -v /tmp/.X11-unix:/tmp/.X11-unix \
