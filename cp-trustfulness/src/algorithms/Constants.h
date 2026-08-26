@@ -62,20 +62,6 @@ namespace ConstantsWGS84
     }
 }
 
-// TODO: revisar
-namespace ConstantsFixedLatLong
-{
-    /// Latitude conversion factor [m/degree] — paper eq. (4), (8).
-    /// Approximately the meridional radius of curvature at mid-latitudes
-    /// divided by (180/π), pre-converted to metres per degree.
-    constexpr double R_PHI_DEG    = 110'574.0;
- 
-    /// Longitude conversion factor [m/degree] — paper eq. (5), (9).
-    /// Equatorial value; scaled by cos(φ) at the call site.
-    constexpr double R_LAMBDA_DEG = 111'320.0;
-
-}
-
 namespace ConstantsApp {
 
     // Yaw-rate magnitude below which the model falls back to CA [rad/s].
