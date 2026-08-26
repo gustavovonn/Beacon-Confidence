@@ -3,6 +3,7 @@
 
 #include "IDeadReckoningModel.h"
 #include <memory>
+#include <string>
 
 namespace artery
 {
