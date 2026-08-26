@@ -90,38 +90,6 @@ namespace artery
     }
 
     // -----------------------------------------------------------------------------
-    // Constant Velocity Model (CV)
-    // -----------------------------------------------------------------------------
-    void CvDeadReckoningModel::predict(std::deque<KinematicState> history, const MotionVector& motionVector, KinematicState& nextState, double dt)
-    {
-        // To be analysed
-        throw std::runtime_error("To be analysed: CV model is to be implemented.");
-    }
-
-    double CvDeadReckoningModel::computeError(const MotionVector& state, double actualLat, double actualLon,
-                                            double actualSpeed, double actualHeading)
-    {
-        // To be analysed
-        throw std::runtime_error("To be analysed: CV model is to be implemented.");
-    }
-
-    // -----------------------------------------------------------------------------
-    // Constant Acceleration Model (CA)
-    // -----------------------------------------------------------------------------
-    void CaDeadReckoningModel::predict(std::deque<KinematicState> history, const MotionVector& motionVector, KinematicState& nextState, double dt)
-    {
-        // To be analysed
-        throw std::runtime_error("To be analysed: CA model is to be implemented.");
-    }
-
-    double CaDeadReckoningModel::computeError(const MotionVector& motionVector, double actualLat, double actualLon,
-                                            double actualSpeed, double actualHeading)
-    {
-        // To be analysed
-        throw std::runtime_error("To be analysed: CA model is to be implemented.");
-    }
-
-    // -----------------------------------------------------------------------------
     // Constant Turn Rate & Acceleration Model (CTRA)
     // -----------------------------------------------------------------------------
     void CtraDeadReckoningModel::predict(std::deque<KinematicState> history, const MotionVector& motionVector, KinematicState& nextState, double dt)
@@ -134,22 +102,6 @@ namespace artery
                                                 double actualSpeed, double actualHeading)
     {
         return computeGeoDistance(motionVector.lat, motionVector.lon, actualLat, actualLon);
-    }
-
-    // -----------------------------------------------------------------------------
-    // Extended Kalman Filter Model (EKF)
-    // -----------------------------------------------------------------------------
-    void EkfDeadReckoningModel::predict(std::deque<KinematicState> history, const MotionVector& motionVector, KinematicState& nextState, double dt)
-    {
-        // To be analysed
-        throw std::runtime_error("To be analysed: EKF model is to be implemented.");
-    }
-
-    double EkfDeadReckoningModel::computeError(const MotionVector& state, double actualLat, double actualLon,
-                                            double actualSpeed, double actualHeading)
-    {
-        // To be analysed
-        throw std::runtime_error("To be analysed: EKF model is to be implemented.");
     }
 
     // -----------------------------------------------------------------------------
@@ -237,16 +189,11 @@ namespace artery
     // -----------------------------------------------------------------------------
     std::unique_ptr<IDeadReckoningModel> DeadReckoningModelFactory::create(const std::string& name)
     {
-        if (name == "CA" || name == "ca") {
-            return std::make_unique<CaDeadReckoningModel>();
-        } else if (name == "CV" || name == "cv") {
-            return std::make_unique<CvDeadReckoningModel>();
-        } else if (name == "HistoryAwareCTRA" || name == "historyawarectra") {
+        if (name == "HistoryAwareCTRA" || name == "historyawarectra") {
             return std::make_unique<HistoryAwareCtraModel>();
-        } else if (name == "EKF" || name == "ekf") {
-            return std::make_unique<EkfDeadReckoningModel>();
         }
-        // Default to CTRA model (validated)
+
+        // Default to CTRA model
         return std::make_unique<CtraDeadReckoningModel>();
     }
 

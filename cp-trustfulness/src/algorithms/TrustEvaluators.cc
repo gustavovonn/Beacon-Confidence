@@ -8,39 +8,6 @@ namespace artery
 {
 
 // -----------------------------------------------------------------------------
-// Exponential Distance Penalty Evaluator
-// -----------------------------------------------------------------------------
-double ExponentialTrustEvaluator::evaluateTrust(std::deque<KinematicState> history, double currentTrust, double distError, const MotionVector& state,
-                                                double actualSpeed, double actualHeading,
-                                                const TrustEvaluationParams& params)
-{
-    // To be analysed
-    throw std::runtime_error("To be analysed: Exponential evaluator is to be implemented.");
-}
-
-// -----------------------------------------------------------------------------
-// Multi-Vector Composite Evaluator (Position + Speed + Heading)
-// -----------------------------------------------------------------------------
-double MultiVectorTrustEvaluator::evaluateTrust(std::deque<KinematicState> history, double currentTrust, double distError, const MotionVector& state,
-                                                double actualSpeed, double actualHeading,
-                                                const TrustEvaluationParams& params)
-{
-    // To be analysed
-    throw std::runtime_error("To be analysed: MultiVector evaluator is to be implemented.");
-}
-
-// -----------------------------------------------------------------------------
-// Mahalanobis Anomaly Metric Evaluator
-// -----------------------------------------------------------------------------
-double MahalanobisTrustEvaluator::evaluateTrust(std::deque<KinematicState> history, double currentTrust, double distError, const MotionVector& state,
-                                                double actualSpeed, double actualHeading,
-                                                const TrustEvaluationParams& params)
-{
-    // To be analysed
-    throw std::runtime_error("To be analysed: Mahalanobis evaluator is to be implemented.");
-}
-
-// -----------------------------------------------------------------------------
 // Beta Reputation System Evaluator
 // -----------------------------------------------------------------------------
 double BetaReputationTrustEvaluator::evaluateTrust(std::deque<KinematicState> history, double currentTrust, double distError, const MotionVector& state,
@@ -111,14 +78,7 @@ double BetaReputationTrustEvaluator::evaluateTrust(std::deque<KinematicState> hi
 // -----------------------------------------------------------------------------
 std::unique_ptr<ITrustEvaluator> TrustEvaluatorFactory::create(const std::string& name)
 {
-    if (name == "MultiVector" || name == "multivector") {
-        return std::make_unique<MultiVectorTrustEvaluator>();
-    } else if (name == "Mahalanobis" || name == "mahalanobis") {
-        return std::make_unique<MahalanobisTrustEvaluator>();
-    } else if (name == "Exponential" || name == "exponential") {
-        return std::make_unique<ExponentialTrustEvaluator>();
-    }
-    // Default to BetaReputation as it's the only validated model
+    // In this paper we will focus only in BetaReputation
     return std::make_unique<BetaReputationTrustEvaluator>();
 }
 

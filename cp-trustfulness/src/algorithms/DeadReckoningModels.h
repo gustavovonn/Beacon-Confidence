@@ -8,24 +8,6 @@
 namespace artery
 {
 
-class CvDeadReckoningModel : public IDeadReckoningModel
-{
-public:
-    void predict(std::deque<KinematicState> history, const MotionVector& motionVector, KinematicState& nextState, double dt) override;
-    double computeError(const MotionVector& state, double actualLat, double actualLon,
-                        double actualSpeed, double actualHeading) override;
-    std::string getName() const override { return "CV"; }
-};
-
-class CaDeadReckoningModel : public IDeadReckoningModel
-{
-public:
-    void predict(std::deque<KinematicState> history, const MotionVector& motionVector, KinematicState& nextState, double dt) override;
-    double computeError(const MotionVector& state, double actualLat, double actualLon,
-                        double actualSpeed, double actualHeading) override;
-    std::string getName() const override { return "CA"; }
-};
-
 class CtraDeadReckoningModel : public IDeadReckoningModel
 {
 public:
@@ -33,15 +15,6 @@ public:
     double computeError(const MotionVector& state, double actualLat, double actualLon,
                         double actualSpeed, double actualHeading) override;
     std::string getName() const override { return "CTRA"; }
-};
-
-class EkfDeadReckoningModel : public IDeadReckoningModel
-{
-public:
-    void predict(std::deque<KinematicState> history, const MotionVector& motionVector, KinematicState& nextState, double dt) override;
-    double computeError(const MotionVector& state, double actualLat, double actualLon,
-                        double actualSpeed, double actualHeading) override;
-    std::string getName() const override { return "EKF"; }
 };
 
 class HistoryAwareCtraModel : public IDeadReckoningModel
