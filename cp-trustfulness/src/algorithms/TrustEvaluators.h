@@ -11,8 +11,7 @@ namespace artery
 class BetaReputationTrustEvaluator : public ITrustEvaluator
 {
 public:
-    double evaluateTrust(std::deque<KinematicState> history, double currentTrust, double distError, const MotionVector& state,
-                         double actualSpeed, double actualHeading,
+    double evaluateTrust(const TrustEvaluationContext& context,
                          const TrustEvaluationParams& params) override;
 
     std::string getName() const override { return "BetaReputation"; }

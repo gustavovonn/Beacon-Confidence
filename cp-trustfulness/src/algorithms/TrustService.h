@@ -27,7 +27,7 @@ public:
 
     void colorEntityInSUMO(long stationId);
 
-    void updateEntitiesColorsInSUMO(long stationId, const MotionVector& state);
+    void updateEntitiesColorsInSUMO(long stationId, double trustScore);
 
     void logContextInCSV(double now, long stationId, double speed, double yawRate, double dt, double distError,
                          double centroidDeviation);
@@ -37,8 +37,9 @@ public:
 
 private:
     omnetpp::simsignal_t m_sigCamReceived;
-    std::map<long, MotionVector> m_predictions;
+
     std::map<long, std::deque<KinematicState>> m_cache;
+    std::map<long, double> m_scores;
 
     // Selected modular strategy implementations
     std::unique_ptr<IDeadReckoningModel> m_drModel;

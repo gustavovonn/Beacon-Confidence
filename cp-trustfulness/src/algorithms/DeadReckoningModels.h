@@ -11,18 +11,28 @@ namespace artery
 class CtraDeadReckoningModel : public IDeadReckoningModel
 {
 public:
-    void predict(std::deque<KinematicState> history, const MotionVector& motionVector, KinematicState& nextState, double dt) override;
-    double computeError(const MotionVector& state, double actualLat, double actualLon,
-                        double actualSpeed, double actualHeading) override;
+    void predict(const std::deque<KinematicState>& history, 
+                 const KinematicState& lastState, 
+                 PredictedState& nextState, 
+                 double dt) override;
+
+    double computeError(const PredictedState& expected, 
+                        const KinematicState& actual) override;
+
     std::string getName() const override { return "CTRA"; }
 };
 
 class HistoryAwareCtraModel : public IDeadReckoningModel
 {
 public:
-    void predict(std::deque<KinematicState> history, const MotionVector& motionVector, KinematicState& nextState, double dt) override;
-    double computeError(const MotionVector& state, double actualLat, double actualLon,
-                        double actualSpeed, double actualHeading) override;
+    void predict(const std::deque<KinematicState>& history, 
+                 const KinematicState& lastState, 
+                 PredictedState& nextState, 
+                 double dt) override;
+
+    double computeError(const PredictedState& expected, 
+                        const KinematicState& actual) override;
+
     std::string getName() const override { return "HistoryAwareCTRA"; }
 private:
     double unwrapHeading(double currentHeading, double previousHeading);

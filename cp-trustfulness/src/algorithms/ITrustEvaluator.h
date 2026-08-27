@@ -3,21 +3,25 @@
 
 #include "IDeadReckoningModel.h"
 #include <string>
-#include <list>
+#include <deque>
 
 namespace artery
 {
 
-
 struct TrustEvaluationParams {
-
-    // Do not change values here.
-    // The source of truth must be the TrustService.ned file.
-    
     // Context-Aware Dynamic Threshold parameters
     double maxPosDev = 0.0;       // meters (acts as baseline intercept)
     double contextSpeedWeight = 0.0;
     double contextYawWeight = 0.0;
+};
+
+struct TrustEvaluationContext {
+    const std::deque<KinematicState>& history;
+    const KinematicState& pastState;
+    const KinematicState& currentState;
+    double lastTrustScore;
+    double distError;
+    double centroidDeviation;
 };
 
 class ITrustEvaluator
@@ -26,8 +30,7 @@ public:
     virtual ~ITrustEvaluator() = default;
 
     // Evaluate and return updated trust score in range [0.0, 1.0]
-    virtual double evaluateTrust(std::deque<KinematicState> history, double currentTrust, double distError, const MotionVector& state,
-                                 double actualSpeed, double actualHeading,
+    virtual double evaluateTrust(const TrustEvaluationContext& context,
                                  const TrustEvaluationParams& params) = 0;
 
     virtual std::string getName() const = 0;

@@ -23,21 +23,20 @@ namespace artery
         return std::sqrt(dx * dx + dy * dy);
     }
 
-    static void ctraIntegrateAndProject(const MotionVector& motionVector, KinematicState& nextState, double dt)
+    static void ctraIntegrateAndProject(double startLat, double startLon, double startSpeed, double startHeading, 
+                                        double a, double w, double dt, PredictedState& nextState)
     {
-        const double latRad = motionVector.lat * ConstantsWGS84::DEG_TO_RAD;
-        const double headingRad = motionVector.heading * ConstantsWGS84::DEG_TO_RAD;
+        const double latRad = startLat * ConstantsWGS84::DEG_TO_RAD;
+        const double headingRad = startHeading * ConstantsWGS84::DEG_TO_RAD;
 
         const double R_phi = ConstantsWGS84::meridionalRadius(latRad);    // N-S [m]
         const double R_lambda = ConstantsWGS84::primeVerticalRadius(latRad); // E-W [m]
         const double cosLat = std::cos(latRad);
 
-        double a = motionVector.accel;
-        double w = motionVector.yawRate;
         // straight-line integration
         if (std::abs(w) < ConstantsApp::YAW_RATE_THRESHOLD)
         {
-            const double v = motionVector.speed;
+            const double v = startSpeed;
             const double predictedSpeed = v + a * dt;
 
             double dist = v * dt + 0.5 * a * dt * dt;
@@ -54,14 +53,14 @@ namespace artery
             const double dy = dist * std::cos(headingRad); // North [m]
             const double dx = dist * std::sin(headingRad); // East  [m]
 
-            nextState.lat = motionVector.lat + dy / R_phi;
-            nextState.lon = motionVector.lon + dx / (R_lambda * cosLat);
-            nextState.heading = motionVector.heading; // unchanged in straight-line
+            nextState.lat = startLat + dy / R_phi;
+            nextState.lon = startLon + dx / (R_lambda * cosLat);
+            nextState.heading = startHeading; // unchanged in straight-line
             return;
         }
 
         // curved path
-        const double v = motionVector.speed;
+        const double v = startSpeed;
         const double v_dt = v + a * dt;           // v' = speed at end of interval
         const double newHeadingRad = headingRad + w * dt;  // θ' = heading at end of interval
 
@@ -79,8 +78,8 @@ namespace artery
         const double dy = inv_w     * (-v_dt * cosH1 + v * cosH0)
                         + a_over_w2 * (        sinH1     - sinH0);
 
-        nextState.lat = motionVector.lat + dy / R_phi;
-        nextState.lon = motionVector.lon + dx / (R_lambda * cosLat);
+        nextState.lat = startLat + dy / R_phi;
+        nextState.lon = startLon + dx / (R_lambda * cosLat);
         nextState.speed = std::max(0.0, v_dt);
 
         // Normalise heading to [0°, 360°).
@@ -92,16 +91,20 @@ namespace artery
     // -----------------------------------------------------------------------------
     // Constant Turn Rate & Acceleration Model (CTRA)
     // -----------------------------------------------------------------------------
-    void CtraDeadReckoningModel::predict(std::deque<KinematicState> history, const MotionVector& motionVector, KinematicState& nextState, double dt)
+    void CtraDeadReckoningModel::predict(const std::deque<KinematicState>& history, 
+                                         const KinematicState& lastState, 
+                                         PredictedState& nextState, 
+                                         double dt)
     {
         if (dt <= 0.0) return;
-        ctraIntegrateAndProject(motionVector, nextState, dt);
+        ctraIntegrateAndProject(lastState.lat, lastState.lon, lastState.speed, lastState.heading, 
+                                lastState.accel, lastState.yawRate, dt, nextState);
     }
 
-    double CtraDeadReckoningModel::computeError(const MotionVector& motionVector, double actualLat, double actualLon,
-                                                double actualSpeed, double actualHeading)
+    double CtraDeadReckoningModel::computeError(const PredictedState& expected, 
+                                                const KinematicState& actual)
     {
-        return computeGeoDistance(motionVector.lat, motionVector.lon, actualLat, actualLon);
+        return computeGeoDistance(expected.lat, expected.lon, actual.lat, actual.lon);
     }
 
     // -----------------------------------------------------------------------------
@@ -117,7 +120,10 @@ namespace artery
         return previousHeading + diff;
     }
 
-    void HistoryAwareCtraModel::predict(std::deque<KinematicState> history, const MotionVector& motionVector, KinematicState& nextState, double dt)
+    void HistoryAwareCtraModel::predict(const std::deque<KinematicState>& history, 
+                                        const KinematicState& lastState, 
+                                        PredictedState& nextState, 
+                                        double dt)
     {
         if (dt <= 0.0) return;
 
@@ -125,7 +131,7 @@ namespace artery
         if (history.size() < 3)
         {
             CtraDeadReckoningModel fallback;
-            fallback.predict(history, motionVector, nextState, dt);
+            fallback.predict(history, lastState, nextState, dt);
             return;
         }
 
@@ -133,13 +139,13 @@ namespace artery
         double sum_t  = 0.0, sum_v  = 0.0, sum_h  = 0.0;
         double sum_t2 = 0.0, sum_tv = 0.0, sum_th = 0.0;
 
-        const double t0 = history.front().time.dbl();
+        const double t0 = history.front().time;
         double prevHeading = history.front().heading;
         const size_t n = history.size();
 
         for (size_t i = 0; i < n; ++i)
         {
-            const double t = history[i].time.dbl() - t0;
+            const double t = history[i].time - t0;
             const double v = history[i].speed;
             double h = history[i].heading;
 
@@ -164,8 +170,8 @@ namespace artery
         if (std::abs(denom) < ConstantsApp::OLS_DENOM_THRESHOLD)
         {
             // Degenerate fit (all timestamps nearly identical): keep last-known values.
-            a = motionVector.accel;
-            w = motionVector.yawRate;
+            a = lastState.accel;
+            w = lastState.yawRate;
         }
         else
         {
@@ -174,14 +180,14 @@ namespace artery
             w = w_deg * ConstantsWGS84::DEG_TO_RAD;
         }
 
-        const MotionVector vec{};
-        ctraIntegrateAndProject(vec, nextState, dt);
+        ctraIntegrateAndProject(lastState.lat, lastState.lon, lastState.speed, lastState.heading, 
+                                a, w, dt, nextState);
     }
 
-    double HistoryAwareCtraModel::computeError(const MotionVector& state, double actualLat, double actualLon,
-                                                double actualSpeed, double actualHeading)
+    double HistoryAwareCtraModel::computeError(const PredictedState& expected, 
+                                               const KinematicState& actual)
     {
-        return computeGeoDistance(state.lat, state.lon, actualLat, actualLon);
+        return computeGeoDistance(expected.lat, expected.lon, actual.lat, actual.lon);
     }
 
     // -----------------------------------------------------------------------------
