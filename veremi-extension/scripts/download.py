@@ -64,7 +64,9 @@ from pathlib import Path
 
 def main():
     parser = argparse.ArgumentParser(description="Download dataset from Zenodo concurrently")
-    parser.add_argument("record_id", help="Zenodo record ID (e.g., 20090854)")
+    # Default Zenodo Record for VeReMi Extension dataset
+    # Reference: https://zenodo.org/records/20090854
+    parser.add_argument("record_id", nargs='?', default="20090854", help="Zenodo record ID (default: 20090854 - https://zenodo.org/records/20090854)")
     
     # Set default destination to the data directory (i.e., veremi-extension/data/)
     default_dest = Path(__file__).parent.parent / 'data'
