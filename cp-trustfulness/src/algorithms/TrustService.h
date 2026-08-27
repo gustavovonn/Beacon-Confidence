@@ -1,15 +1,16 @@
 #ifndef TRUST_SERVICE_H_
 #define TRUST_SERVICE_H_
 
-#include <artery/application/ItsG5BaseService.h>
-#include <artery/application/CaObject.h>
 #include "IDeadReckoningModel.h"
 #include "ITrustEvaluator.h"
 #include "DeadReckoningModels.h"
 #include "TrustEvaluators.h"
-#include <omnetpp/coutvector.h>
 #include <map>
+#include <deque>
 #include <memory>
+#include <artery/application/ItsG5BaseService.h>
+#include <artery/application/CaObject.h>
+#include <omnetpp/coutvector.h>
 
 namespace artery
 {
@@ -21,12 +22,24 @@ public:
     void initialize() override;
     void trigger() override;
     void receiveSignal(omnetpp::cComponent* source, omnetpp::simsignal_t signal, omnetpp::cObject* obj, omnetpp::cObject* details) override;
+
+    void populateDataBase(long stationId);
+
+    void colorEntityInSUMO(long stationId);
+
+    void updateEntitiesColorsInSUMO(long stationId, double trustScore);
+
+    void logContextInCSV(double now, long stationId, double speed, double yawRate, double dt, double distError,
+                         double centroidDeviation);
+
     bool requiresListener() const override;
     void finish() override;
 
 private:
     omnetpp::simsignal_t m_sigCamReceived;
-    std::map<long, VehicleState> m_neighbors;
+
+    std::map<long, std::deque<KinematicState>> m_cache;
+    std::map<long, double> m_scores;
 
     // Selected modular strategy implementations
     std::unique_ptr<IDeadReckoningModel> m_drModel;

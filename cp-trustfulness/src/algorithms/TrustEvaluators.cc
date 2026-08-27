@@ -8,95 +8,59 @@ namespace artery
 {
 
 // -----------------------------------------------------------------------------
-// Exponential Distance Penalty Evaluator
-// -----------------------------------------------------------------------------
-double ExponentialTrustEvaluator::evaluateTrust(double currentTrust, double distError, const VehicleState& state,
-                                                double actualSpeed, double actualHeading,
-                                                const TrustEvaluationParams& params)
-{
-    // To be analysed
-    throw std::runtime_error("To be analysed: Exponential evaluator is to be implemented.");
-}
-
-// -----------------------------------------------------------------------------
-// Multi-Vector Composite Evaluator (Position + Speed + Heading)
-// -----------------------------------------------------------------------------
-double MultiVectorTrustEvaluator::evaluateTrust(double currentTrust, double distError, const VehicleState& state,
-                                                double actualSpeed, double actualHeading,
-                                                const TrustEvaluationParams& params)
-{
-    // To be analysed
-    throw std::runtime_error("To be analysed: MultiVector evaluator is to be implemented.");
-}
-
-// -----------------------------------------------------------------------------
-// Mahalanobis Anomaly Metric Evaluator
-// -----------------------------------------------------------------------------
-double MahalanobisTrustEvaluator::evaluateTrust(double currentTrust, double distError, const VehicleState& state,
-                                                double actualSpeed, double actualHeading,
-                                                const TrustEvaluationParams& params)
-{
-    // To be analysed
-    throw std::runtime_error("To be analysed: Mahalanobis evaluator is to be implemented.");
-}
-
-// -----------------------------------------------------------------------------
 // Beta Reputation System Evaluator
 // -----------------------------------------------------------------------------
-double BetaReputationTrustEvaluator::evaluateTrust(double currentTrust, double distError, const VehicleState& state,
-                                                   double actualSpeed, double actualHeading,
+double BetaReputationTrustEvaluator::evaluateTrust(const TrustEvaluationContext& context,
                                                    const TrustEvaluationParams& params)
 {
     // Convert current trust score [0,1] to pseudo Beta parameters (alpha, beta)
     double totalObservations = 10.0;
-    double alpha = currentTrust * totalObservations + 1.0;
-    double beta = (1.0 - currentTrust) * totalObservations + 1.0;
+    double alpha = context.lastTrustScore * totalObservations + 1.0;
+    double beta = (1.0 - context.lastTrustScore) * totalObservations + 1.0;
 
     // --- Context-Aware Dynamic Threshold ---
     // Extract channel congestion (dt)
-    double dt = omnetpp::simTime().dbl() - state.lastCamTime.dbl();
+    double dt = context.currentState.time - context.pastState.time;
     if (dt <= 0.0) dt = 0.1;
     
     // Applying offline optimized weights:
     // dynamicMaxPosDev = base (5.0) + speedWeight*(speed*dt) + yawWeight*(yawRate*speed)
     double dynamicMaxPosDev = params.maxPosDev 
-                            + params.contextSpeedWeight * (actualSpeed * dt) 
-                            + params.contextYawWeight * (std::abs(state.lastYawRate) * actualSpeed);
+                            + params.contextSpeedWeight * (context.currentState.speed * dt) 
+                            + params.contextYawWeight * (std::abs(context.pastState.yawRate) * context.currentState.speed);
 
     // --- Update Beta Coefficients ---
-    if (distError <= dynamicMaxPosDev) {
+    if (context.distError <= dynamicMaxPosDev) {
         alpha += 1.0;
     } else {
         // Prediction failed. Is it just a sharp turn or a spatial spoof (teleportation)?
         // Checkinkg Centroid Deviation
         // Calculate the actual time span from the oldest history packet to now
         double actualTimeWindow = 0.1;
-        if (!state.history.empty()) {
-            actualTimeWindow = omnetpp::simTime().dbl() - state.history.front().time.dbl();
+        if (!context.history.empty()) {
+            actualTimeWindow = context.currentState.time - context.history.front().time;
         }
 
         // factor 0.75 is just a geometric heuristic: 0.5 lateral max dev + 0.25 overshoot
-        double expectedCentroidLimit = (actualSpeed * actualTimeWindow * 0.75) + dynamicMaxPosDev;
+        double expectedCentroidLimit = (context.currentState.speed * actualTimeWindow * 0.75) + dynamicMaxPosDev;
         
-        bool centroidCheckPassed = (!state.history.empty() && state.lastCentroidDeviation <= expectedCentroidLimit);
+        bool centroidCheckPassed = (!context.history.empty() && context.centroidDeviation <= expectedCentroidLimit);
         
-        // std::cout << "[DEBUG] distError=" << distError << ", centroidDev=" << state.lastCentroidDeviation 
-        //           << ", limit=" << expectedCentroidLimit << ", passed=" << centroidCheckPassed << std::endl;
 
         if (centroidCheckPassed) {
             // Saved by Phase 2 Centroid Check!.
             // The car is physically where it should be relative to its recent trajectory.
             alpha += 0.5; // Small reward, no beta penalty
-        } else if (distError <= dynamicMaxPosDev * 1.35) {
+        } else if (context.distError <= dynamicMaxPosDev * 1.35) {
             // Soft margin buffer for minor kinematic/viaduct jitter (<35% overshoot)
-            double excessRatio = (distError - dynamicMaxPosDev) / dynamicMaxPosDev;
+            double excessRatio = (context.distError - dynamicMaxPosDev) / dynamicMaxPosDev;
             double betaPenalty = 0.10 + 0.50 * excessRatio; // Small penalty (0.10 to 0.27) instead of instant >1.0
             beta += betaPenalty;
         } else {
             // Severe discrepancy (>35% overshoot, e.g. 20m - 500m fault)
             // A teleportation attack must be able to drop trust < 0.5 in a single frame.
             // Since alpha = 11 for perfect trust, beta penalty needs to be > 11 to trigger a ban.
-            double excessRatio = (distError - dynamicMaxPosDev) / dynamicMaxPosDev;
+            double excessRatio = (context.distError - dynamicMaxPosDev) / dynamicMaxPosDev;
             double betaPenalty = std::min(15.0, 5.0 + 5.0 * excessRatio);
             beta += betaPenalty;
         }
@@ -111,14 +75,7 @@ double BetaReputationTrustEvaluator::evaluateTrust(double currentTrust, double d
 // -----------------------------------------------------------------------------
 std::unique_ptr<ITrustEvaluator> TrustEvaluatorFactory::create(const std::string& name)
 {
-    if (name == "MultiVector" || name == "multivector") {
-        return std::make_unique<MultiVectorTrustEvaluator>();
-    } else if (name == "Mahalanobis" || name == "mahalanobis") {
-        return std::make_unique<MahalanobisTrustEvaluator>();
-    } else if (name == "Exponential" || name == "exponential") {
-        return std::make_unique<ExponentialTrustEvaluator>();
-    }
-    // Default to BetaReputation as it's the only validated model
+    // In this paper we will focus only in BetaReputation
     return std::make_unique<BetaReputationTrustEvaluator>();
 }
 

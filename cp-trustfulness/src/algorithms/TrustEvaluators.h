@@ -3,43 +3,17 @@
 
 #include "ITrustEvaluator.h"
 #include <memory>
+#include <deque>
 
 namespace artery
 {
 
-class ExponentialTrustEvaluator : public ITrustEvaluator
-{
-public:
-    double evaluateTrust(double currentTrust, double distError, const VehicleState& state,
-                         double actualSpeed, double actualHeading,
-                         const TrustEvaluationParams& params) override;
-    std::string getName() const override { return "Exponential"; }
-};
-
-class MultiVectorTrustEvaluator : public ITrustEvaluator
-{
-public:
-    double evaluateTrust(double currentTrust, double distError, const VehicleState& state,
-                         double actualSpeed, double actualHeading,
-                         const TrustEvaluationParams& params) override;
-    std::string getName() const override { return "MultiVector"; }
-};
-
-class MahalanobisTrustEvaluator : public ITrustEvaluator
-{
-public:
-    double evaluateTrust(double currentTrust, double distError, const VehicleState& state,
-                         double actualSpeed, double actualHeading,
-                         const TrustEvaluationParams& params) override;
-    std::string getName() const override { return "Mahalanobis"; }
-};
-
 class BetaReputationTrustEvaluator : public ITrustEvaluator
 {
 public:
-    double evaluateTrust(double currentTrust, double distError, const VehicleState& state,
-                         double actualSpeed, double actualHeading,
+    double evaluateTrust(const TrustEvaluationContext& context,
                          const TrustEvaluationParams& params) override;
+
     std::string getName() const override { return "BetaReputation"; }
 };
 

@@ -77,3 +77,4 @@ paper/
 references/
 veremi-extension/data/
 veremi-extension/parquet
+**/.venv/*

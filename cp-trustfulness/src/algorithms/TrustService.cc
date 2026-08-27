@@ -98,236 +98,258 @@ void TrustService::initialize()
 
 void TrustService::trigger()
 {
-    omnetpp::SimTime now = omnetpp::simTime();
+    // Predict-and-discard loop has been removed. Predictions are made on-demand in receiveSignal.
+}
 
-    for (auto& pair : m_neighbors) {
-        VehicleState& state = pair.second;
-        double dt = (now - state.lastCamTime).dbl();
-        if (m_drModel && dt > 0.0) {
-            m_drModel->predict(state, dt);
-        }
+KinematicState* etsi_cam_unwrap(const auto& asn1_cam)
+{
+    KinematicState* kinematicState = new KinematicState();
+
+    // Extract position in degrees (latitude/longitude are in 1e-7 degrees)
+    kinematicState->lat = asn1_cam->cam.camParameters.basicContainer.referencePosition.latitude * 1e-7;
+    kinematicState->lon = asn1_cam->cam.camParameters.basicContainer.referencePosition.longitude * 1e-7;
+
+    // Extract high frequency container
+    const auto& hf = asn1_cam->cam.camParameters.highFrequencyContainer.choice.basicVehicleContainerHighFrequency;
+
+    // Extract speed in m/s (speed is in 0.01 m/s)
+    kinematicState->speed = hf.speed.speedValue * 0.01;
+
+    // Extract heading in degrees (heading is in 0.1 degrees)
+    kinematicState->heading = hf.heading.headingValue * 0.1;
+
+    // Extract acceleration in m/s^2 (longitudinalAcceleration is in 0.1 m/s^2)
+    kinematicState->accel = hf.longitudinalAcceleration.longitudinalAccelerationValue * 0.1;
+
+    // Extract yaw rate in rad/s (yawRate is in 0.01 deg/s)
+    kinematicState->yawRate = hf.yawRate.yawRateValue * 0.01 * M_PI / 180.0;
+
+    kinematicState->time = omnetpp::simTime().dbl();
+
+    return kinematicState;
+}
+
+double calculateCentroidDeviation(const std::deque<KinematicState>& state_history,
+                                  double receivedLat, double receivedLon)
+{
+    if (state_history.empty()) return 0.0;
+
+    double sumLat = 0.0;
+    double sumLon = 0.0;
+
+    for (const auto& snap : state_history) {
+        sumLat += snap.lat;
+        sumLon += snap.lon;
     }
+
+    double cLat = sumLat / state_history.size();
+    double cLon = sumLon / state_history.size();
+
+    double latRad1 = cLat * M_PI / 180.0;
+    double latRad2 = receivedLat * M_PI / 180.0;
+    double lonRad1 = cLon * M_PI / 180.0;
+    double lonRad2 = receivedLon * M_PI / 180.0;
+    double x = (lonRad2 - lonRad1) * std::cos((latRad1 + latRad2) / 2.0);
+    double y = (latRad2 - latRad1);
+
+    return (6371000.0 * std::sqrt(x * x + y * y));
 }
 
 void TrustService::receiveSignal(cComponent* source, simsignal_t signal, cObject* obj, cObject* details)
 {
     // to react only when receiving CAM messages
-    if (signal == m_sigCamReceived && obj != nullptr) {
-        auto caObj = dynamic_cast<CaObject*>(obj);
-        if (caObj) {
-            const auto& cam = caObj->asn1();
-            long stationId = cam->header.stationID;
+    if (signal != m_sigCamReceived || obj == nullptr) {
+        return;
+    }
+    auto caObj = dynamic_cast<CaObject*>(obj);
+    if (!caObj) {
+        return;
+    }
+    const auto& cam = caObj->asn1();
+    long stationId = cam->header.stationID;
 
-            // Extract position in degrees (latitude/longitude are in 1e-7 degrees)
-            double lat = cam->cam.camParameters.basicContainer.referencePosition.latitude * 1e-7;
-            double lon = cam->cam.camParameters.basicContainer.referencePosition.longitude * 1e-7;
+    KinematicState* receivedKinematicState = etsi_cam_unwrap(cam);
 
-            // Extract high frequency container
-            const auto& hf = cam->cam.camParameters.highFrequencyContainer.choice.basicVehicleContainerHighFrequency;
+    auto it = m_cache.find(stationId);
 
-            // Extract speed in m/s (speed is in 0.01 m/s)
-            double speed = hf.speed.speedValue * 0.01;
+    // New Vehicle incoming
+    if (it == m_cache.end()) {
 
-            // Extract heading in degrees (heading is in 0.1 degrees)
-            double heading = hf.heading.headingValue * 0.1;
+        // TODO: review first score attribution
+        m_scores[stationId] = 1.0;
 
-            // Extract acceleration in m/s^2 (longitudinalAcceleration is in 0.1 m/s^2)
-            double accel = hf.longitudinalAcceleration.longitudinalAccelerationValue * 0.1;
+        // update the just received kinematic state inside the window history
+        std::deque<KinematicState> history;
+        history.push_back(*receivedKinematicState);
+        m_cache[stationId] = history;
 
-            // Extract yaw rate in rad/s (yawRate is in 0.01 deg/s)
-            double yawRate = hf.yawRate.yawRateValue * 0.01 * M_PI / 180.0;
+        this->populateDataBase(stationId);
+        this->colorEntityInSUMO(stationId);
+        delete receivedKinematicState;
+        return;
+    }
 
-            // Logs that only outputs in Qtenv mode
-            // EV_INFO << "⬇ [CAM IN] Node " << stationId << " claims:"
-            //         << " Pos(" << lat << ", " << lon << "),"
-            //         << " Speed: " << speed << "m/s,"
-            //         << " Heading: " << heading << "deg" << std::endl;
+    std::deque<KinematicState>& history = m_cache[stationId];
+    const KinematicState& pastKinematicState = history.back();
 
-            omnetpp::SimTime now = omnetpp::simTime();
+    // 1. Compute time gap since last received CAM for this vehicle
+    double dt = receivedKinematicState->time - pastKinematicState.time;
 
-            auto it = m_neighbors.find(stationId);
-            if (it == m_neighbors.end()) {
-                // New Vehicle incoming
-                VehicleState state;
-                state.stationId = stationId;
-                state.lastLat = lat;
-                state.lastLon = lon;
-                state.lastSpeed = speed;
-                state.lastHeading = heading;
-                state.lastAccel = accel;
-                state.lastYawRate = yawRate;
-                state.lastCamTime = now;
-                state.expectedLat = lat;
-                state.expectedLon = lon;
-                state.expectedSpeed = speed;
-                state.expectedHeading = heading;
-                state.trustScore = 1.0;
-                state.lastPredictionError = 0.0;
-                state.lastCentroidDeviation = 0.0;
+    // 2. Predict Spatial State
+    PredictedState expectedState;
+    if (m_drModel && dt > 0.0) {
+        m_drModel->predict(history, pastKinematicState, expectedState, dt);
+    } else {
+        expectedState.lat = pastKinematicState.lat;
+        expectedState.lon = pastKinematicState.lon;
+        expectedState.speed = pastKinematicState.speed;
+        expectedState.heading = pastKinematicState.heading;
+    }
 
-                CamSnapshot snapshot;
-                snapshot.lat = lat;
-                snapshot.lon = lon;
-                snapshot.speed = speed;
-                snapshot.heading = heading;
-                snapshot.time = now;
-                state.history.push_back(snapshot);
+    // 3. Compute Distance Error
+    double distError = 0.0;
+    if (m_drModel) {
+        distError = m_drModel->computeError(expectedState, *receivedKinematicState);
+    }
 
-                // ====================================================================
-                // Creates SQLite/OMNet++ vectors and push the first measurement. 
-                // Only the trust is currently being used to calculate final simulation stats.
-                // ====================================================================
-                std::string vecName = "TrustScore_Node_" + std::to_string(stationId);
-                cOutVector* vec = new cOutVector(vecName.c_str());
-                take(vec);
-                vec->record(1.0);
-                m_trustVectors[stationId] = vec;
+    // 4. Centroid Deviation
+    double centroidDeviation = calculateCentroidDeviation(history, 
+        receivedKinematicState->lat, receivedKinematicState->lon);
 
-                std::string dtVecName = "CamDeltaT_Node_" + std::to_string(stationId);
-                cOutVector* dtVec = new cOutVector(dtVecName.c_str());
-                take(dtVec);
-                dtVec->record(0.1);
-                m_dtVectors[stationId] = dtVec;
+    // 5. Evaluate Trust
+    double lastScore = m_scores[stationId];
+    TrustEvaluationContext ctx {
+        history, 
+        pastKinematicState, 
+        *receivedKinematicState, 
+        lastScore, 
+        distError, 
+        centroidDeviation
+    };
+    
+    if (m_trustEvaluator) {
+        m_scores[stationId] = m_trustEvaluator->evaluateTrust(ctx, m_params);
+    }
 
-                std::string errVecName = "DistError_Node_" + std::to_string(stationId);
-                cOutVector* errVec = new cOutVector(errVecName.c_str());
-                take(errVec);
-                errVec->record(0.0);
-                m_distErrorVectors[stationId] = errVec;
+    this->logContextInCSV(omnetpp::simTime().dbl(), stationId, receivedKinematicState->speed, receivedKinematicState->yawRate, dt, distError, centroidDeviation);
 
-                m_neighbors[stationId] = state;
+    // ====================================================================
+    // Updates SQLite/OMNet++ vectors.
+    // Only the trust is currently being used to calculate final simulation stats.
+    // ====================================================================
+    if (m_trustVectors.find(stationId) != m_trustVectors.end()) {
+        m_trustVectors[stationId]->record(m_scores[stationId]);
+    }
+    if (m_dtVectors.find(stationId) != m_dtVectors.end()) {
+        m_dtVectors[stationId]->record(dt);
+    }
+    if (m_distErrorVectors.find(stationId) != m_distErrorVectors.end()) {
+        m_distErrorVectors[stationId]->record(distError);
+    }
 
-                // ======================================================================
-                // SUMO COLORING: vehicle starts GREEN
-                // ======================================================================
-                auto controller = getFacilities().get_mutable_ptr<traci::VehicleController>();
-                if (controller) {
-                    auto traciApi = controller->getTraCI();
-                    if (traciApi) {
-                        std::string senderTraciId = findTraciIdByStationId(stationId);
-                        if (!senderTraciId.empty()) {
-                            auto activeVehicles = traciApi->vehicle.getIDList();
-                            if (std::find(activeVehicles.begin(), activeVehicles.end(), senderTraciId) != activeVehicles.end()) {
-                                try {
-                                    traciApi->vehicle.setColor(senderTraciId, libsumo::TraCIColor(0, 255, 0, 255));
-                                } catch (...) {}
-                            }
-                        }
-                    }
-                }
-            } else {
-                VehicleState& state = it->second;
+    this->updateEntitiesColorsInSUMO(stationId, m_scores[stationId]);
 
-                // 1. Compute DR state prediction error
-                double distError = m_drModel->computeError(state, lat, lon, speed, heading);
-                state.lastPredictionError = distError;
+    // Update state history
+    history.push_back(*receivedKinematicState);
 
-                // --- Phase 2: Centroid Deviation Check ---
-                double centroidDeviation = 0.0;
-                if (!state.history.empty()) {
-                    double sumLat = 0.0;
-                    double sumLon = 0.0;
-                    for (const auto& snap : state.history) {
-                        sumLat += snap.lat;
-                        sumLon += snap.lon;
-                    }
-                    double cLat = sumLat / state.history.size();
-                    double cLon = sumLon / state.history.size();
-                    
-                    double latRad1 = cLat * M_PI / 180.0;
-                    double latRad2 = lat * M_PI / 180.0;
-                    double lonRad1 = cLon * M_PI / 180.0;
-                    double lonRad2 = lon * M_PI / 180.0;
-                    double x = (lonRad2 - lonRad1) * std::cos((latRad1 + latRad2) / 2.0);
-                    double y = (latRad2 - latRad1);
-                    centroidDeviation = 6371000.0 * std::sqrt(x * x + y * y);
-                }
-                state.lastCentroidDeviation = centroidDeviation;
+    while (history.size() > static_cast<size_t>(m_historySize)) {
+        history.pop_front();
+    }
+    
+    delete receivedKinematicState;
+}
 
-                // Compute time gap since last received CAM for this vehicle
-                double dt = (now - state.lastCamTime).dbl();
+void TrustService::populateDataBase(long stationId)
+{
+    // ====================================================================
+    // Creates SQLite/OMNet++ vectors and push the first measurement.
+    // Only the trust is currently being used to calculate final simulation stats.
+    // ====================================================================
+    std::string vecName = "TrustScore_Node_" + std::to_string(stationId);
+    cOutVector* vec = new cOutVector(vecName.c_str());
+    take(vec);
+    vec->record(1.0);
+    m_trustVectors[stationId] = vec;
 
-                // 2. Evaluate raw trust score using pluggable strategy
-                double oldTrust = state.trustScore;
-                state.trustScore = m_trustEvaluator->evaluateTrust(state.trustScore, distError, state, speed, heading, m_params);
+    std::string dtVecName = "CamDeltaT_Node_" + std::to_string(stationId);
+    cOutVector* dtVec = new cOutVector(dtVecName.c_str());
+    take(dtVec);
+    dtVec->record(0.1);
+    m_dtVectors[stationId] = dtVec;
 
-                // ======================================================================
-                // CSV Log Context Dataset for Offline Optimization
-                // ======================================================================
-                {
-                    std::lock_guard<std::mutex> lock(g_csvMutex);
-                    if (!g_csvFile.is_open()) {
-                        system("mkdir -p results/offline-training");
-                        g_csvFile.open("results/offline-training/trust_context_dataset.csv", std::ios::out | std::ios::trunc);
-                    }
-                    if (!g_csvHeaderWritten) {
-                        g_csvFile << "time,nodeId,speed,yawRate,dt,distError,centroidDeviation\n";
-                        g_csvHeaderWritten = true;
-                    }
-                    g_csvFile << now.dbl() << "," << stationId << "," << speed << "," 
-                              << yawRate << "," << dt << "," << distError << "," 
-                              << centroidDeviation << "\n";
-                }
+    std::string errVecName = "DistError_Node_" + std::to_string(stationId);
+    cOutVector* errVec = new cOutVector(errVecName.c_str());
+    take(errVec);
+    errVec->record(0.0);
+    m_distErrorVectors[stationId] = errVec;
+}
 
-                // ====================================================================
-                // Updates SQLite/OMNet++ vectors. 
-                // Only the trust is currently being used to calculate final simulation stats.
-                // ====================================================================
-                if (m_trustVectors.find(stationId) != m_trustVectors.end()) {
-                    m_trustVectors[stationId]->record(state.trustScore);
-                }
-                if (m_dtVectors.find(stationId) != m_dtVectors.end()) {
-                    m_dtVectors[stationId]->record(dt);
-                }
-                if (m_distErrorVectors.find(stationId) != m_distErrorVectors.end()) {
-                    m_distErrorVectors[stationId]->record(distError);
-                }
-
-                // ======================================================================
-                // SIMULATION COLORING: updating to RED if trust is below 0.5
-                // ======================================================================
-                auto controller = getFacilities().get_mutable_ptr<traci::VehicleController>();
-                if (controller) {
-                    auto traciApi = controller->getTraCI();
-                    if (traciApi) {
-                        std::string senderTraciId = findTraciIdByStationId(stationId);
-                        if (!senderTraciId.empty()) {
-                            auto activeVehicles = traciApi->vehicle.getIDList();
-                            if (std::find(activeVehicles.begin(), activeVehicles.end(), senderTraciId) != activeVehicles.end()) {
-                                try {
-                                    if (state.trustScore < 0.5) {
-                                        traciApi->vehicle.setColor(senderTraciId, libsumo::TraCIColor(255, 0, 0, 255)); // TURN RED
-                                    } // else if (oldTrust < 0.5 && state.trustScore >= 0.7) {
-                                    //     traciApi->vehicle.setColor(senderTraciId, libsumo::TraCIColor(0, 255, 0, 255)); // RECOVERED GREEN
-                                    // }
-                                } catch (...) {}
-                            }
-                        }
-                    }
-                }
-
-                // Update state history with actual received CAM values
-                state.lastLat = lat;
-                state.lastLon = lon;
-                state.lastSpeed = speed;
-                state.lastHeading = heading;
-                state.lastAccel = accel;
-                state.lastYawRate = yawRate;
-                state.lastCamTime = now;
-                
-                CamSnapshot snapshot;
-                snapshot.lat = lat;
-                snapshot.lon = lon;
-                snapshot.speed = speed;
-                snapshot.heading = heading;
-                snapshot.time = now;
-                state.history.push_back(snapshot);
-                while (state.history.size() > static_cast<size_t>(m_historySize)) {
-                    state.history.pop_front();
+void TrustService::colorEntityInSUMO(long stationId)
+{
+    // ======================================================================
+    // SUMO COLORING: vehicle starts GREEN
+    // ======================================================================
+    auto controller = getFacilities().get_mutable_ptr<traci::VehicleController>();
+    if (controller) {
+        auto traciApi = controller->getTraCI();
+        if (traciApi) {
+            std::string senderTraciId = findTraciIdByStationId(stationId);
+            if (!senderTraciId.empty()) {
+                auto activeVehicles = traciApi->vehicle.getIDList();
+                if (std::find(activeVehicles.begin(), activeVehicles.end(), senderTraciId) != activeVehicles.end()) {
+                    try {
+                        traciApi->vehicle.setColor(senderTraciId, libsumo::TraCIColor(0, 255, 0, 255));
+                    } catch (...) {}
                 }
             }
         }
     }
+}
+
+void TrustService::updateEntitiesColorsInSUMO(long stationId, double trustScore)
+{
+    // ======================================================================
+    // SIMULATION COLORING: updating to RED if trust is below 0.5
+    // ======================================================================
+    auto controller = getFacilities().get_mutable_ptr<traci::VehicleController>();
+    if (controller) {
+        auto traciApi = controller->getTraCI();
+        if (traciApi) {
+            std::string senderTraciId = findTraciIdByStationId(stationId);
+            if (!senderTraciId.empty()) {
+                auto activeVehicles = traciApi->vehicle.getIDList();
+                if (std::find(activeVehicles.begin(), activeVehicles.end(), senderTraciId) != activeVehicles.end()) {
+                    try {
+                        if (trustScore < 0.5) {
+                            traciApi->vehicle.setColor(senderTraciId, libsumo::TraCIColor(255, 0, 0, 255)); // TURN RED
+                        } // else if (oldTrust < 0.5 && trustScore >= 0.7) {
+                        //     traciApi->vehicle.setColor(senderTraciId, libsumo::TraCIColor(0, 255, 0, 255)); // RECOVERED GREEN
+                        // }
+                    } catch (...) {}
+                }
+            }
+        }
+    }
+}
+
+void TrustService::logContextInCSV(double now, long stationId, double speed,
+    double yawRate, double dt, double distError, double centroidDeviation)
+{
+    // ======================================================================
+    // CSV Log Context Dataset for Offline Optimization
+    // ======================================================================
+    std::lock_guard<std::mutex> lock(g_csvMutex);
+    if (!g_csvFile.is_open()) {
+        system("mkdir -p results/offline-training");
+        g_csvFile.open("results/offline-training/trust_context_dataset.csv", std::ios::out | std::ios::trunc);
+    }
+    if (!g_csvHeaderWritten) {
+        g_csvFile << "time,nodeId,speed,yawRate,dt,distError,centroidDeviation\n";
+        g_csvHeaderWritten = true;
+    }
+    g_csvFile << now << "," << stationId << "," << speed << ","
+            << yawRate << "," << dt << "," << distError << ","
+            << centroidDeviation << "\n";
 }
 
 bool TrustService::requiresListener() const
