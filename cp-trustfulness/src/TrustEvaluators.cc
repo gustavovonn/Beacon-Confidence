@@ -1,7 +1,6 @@
-#include "TrustEvaluators.h"
+#include "../include/TrustEvaluators.h"
 #include <cmath>
 #include <algorithm>
-#include <omnetpp/csimulation.h>
 #include <stdexcept>
 
 namespace artery

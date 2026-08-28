@@ -1,10 +1,10 @@
 #ifndef TRUST_SERVICE_H_
 #define TRUST_SERVICE_H_
 
-#include "IDeadReckoningModel.h"
-#include "ITrustEvaluator.h"
-#include "DeadReckoningModels.h"
-#include "TrustEvaluators.h"
+#include "../../include/IDeadReckoningModel.h"
+#include "../../include/ITrustEvaluator.h"
+#include "../../include/DeadReckoningModels.h"
+#include "../../include/TrustEvaluators.h"
 #include <map>
 #include <deque>
 #include <memory>

@@ -75,19 +75,24 @@ def process_and_chunk_dataset(base_dir, output_dir):
         if not (is_ground_truth or is_trace):
             continue
             
+        # Maintain the full relative directory structure (e.g. ConstPosOffset/ConstPosOffset_1416/VeReMi_...)
+        rel_dir = json_file.relative_to(base_path).parent
+        partition_dir = output_path / rel_dir
+        
+        out_filename = filename.replace('.json', '.parquet')
+        out_filepath = partition_dir / out_filename
+        
+        if out_filepath.exists():
+            print(f"Skipping {json_file.name} (already processed)")
+            continue
+            
         print(f"Processing: {json_file.relative_to(base_path)}")
         df = process_file(json_file)
         
         if df.empty:
             continue
             
-        # Maintain the full relative directory structure (e.g. ConstPosOffset/ConstPosOffset_1416/VeReMi_...)
-        rel_dir = json_file.relative_to(base_path).parent
-        partition_dir = output_path / rel_dir
         partition_dir.mkdir(parents=True, exist_ok=True)
-        
-        out_filename = filename.replace('.json', '.parquet')
-        out_filepath = partition_dir / out_filename
         
         table = pa.Table.from_pandas(df)
         pq.write_table(table, out_filepath, compression='snappy')
@@ -103,7 +108,7 @@ if __name__ == '__main__':
     
     args = parser.parse_args()
     
-    input_dir = Path(__file__).parent / args.input
-    output_dir = Path(__file__).parent / args.output
+    input_dir = Path(args.input).resolve()
+    output_dir = Path(args.output).resolve()
     
     process_and_chunk_dataset(input_dir, output_dir)

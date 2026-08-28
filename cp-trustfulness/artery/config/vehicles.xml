@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vehicles>
+    <vehicle type="config.neds.HonestCar" rate="0.95" />
+    <vehicle type="config.neds.FaultyCar" rate="0.05" />
+</vehicles>

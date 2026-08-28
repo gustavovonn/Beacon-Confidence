@@ -9,6 +9,16 @@ It consolidates all results into a single CSV file for easy plotting.
 
 import os
 import sys
+
+# --- VENV AUTO-BOOTSTRAP ---
+# If running on the system python, seamlessly restart inside the project's .venv
+if sys.prefix == sys.base_prefix:
+    venv_python = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".venv", "bin", "python3"))
+    if os.path.exists(venv_python):
+        print(f"🔄 Auto-restarting inside virtual environment...")
+        os.execv(venv_python, [venv_python] + sys.argv)
+# ---------------------------
+
 import subprocess
 import yaml
 import csv

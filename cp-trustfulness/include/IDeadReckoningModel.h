@@ -1,7 +1,6 @@
 #ifndef I_DEAD_RECKONING_MODEL_H_
 #define I_DEAD_RECKONING_MODEL_H_
 
-#include <omnetpp/simtime.h>
 #include <string>
 #include <deque>
 

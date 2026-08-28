@@ -1,4 +1,4 @@
-#include "TrustService.h"
+#include "../include/TrustService.h"
 #include "artery/application/Middleware.h"
 #include "artery/traci/VehicleController.h"
 #include "artery/utility/IdentityRegistry.h"
@@ -78,9 +78,6 @@ void TrustService::initialize()
     m_params.contextYawWeight = par("contextYawWeight").doubleValue();
     m_historySize = par("historySize").intValue();
 
-    // Qtenv log
-    // EV_INFO << "TrustService initialized with DR Model [" << m_drModel->getName()
-    //         << "] and Trust Evaluator [" << m_trustEvaluator->getName() << "]" << std::endl;
 
     // CAM registering    
     m_sigCamReceived = cComponent::registerSignal("CamReceived");

@@ -74,7 +74,9 @@ cp-trustfulness/.qtenvrc
 *__pycache__*
 latex/
 paper/
+**/.venv/*
 references/
 veremi-extension/data/
 veremi-extension/parquet
-**/.venv/*
+**/results/*
+**/.cmdenv-log

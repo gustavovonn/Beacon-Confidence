@@ -90,8 +90,7 @@ if __name__ == '__main__':
     
     args = parser.parse_args()
     
-    target_dir = Path(__file__).parent / args.dir
-    target_dir = target_dir.resolve()
+    target_dir = Path(args.dir).resolve()
     
     if not target_dir.exists():
         print(f"Directory not found: {target_dir}")

@@ -65,13 +65,13 @@ def create_experiment_dir(experiment_name: str) -> str:
 
 def update_faulty_rate(rate: float) -> None:
     """Dynamically update vehicles.xml with requested FaultyCar ratio."""
-    xml_path = os.path.join(WORKSPACE_DIR, "cp-trustfulness", "config", "vehicles.xml")
+    xml_path = os.path.join(WORKSPACE_DIR, "artery", "config", "vehicles.xml")
     honest_rate = max(0.0, 1.0 - rate)
 
     content = f"""<?xml version="1.0" encoding="utf-8"?>
 <vehicles>
-    <vehicle type="src.modules.HonestCar" rate="{honest_rate:.2f}" />
-    <vehicle type="src.modules.FaultyCar" rate="{rate:.2f}" />
+    <vehicle type="config.neds.HonestCar" rate="{honest_rate:.2f}" />
+    <vehicle type="config.neds.FaultyCar" rate="{rate:.2f}" />
 </vehicles>
 """
 
@@ -81,7 +81,7 @@ def update_faulty_rate(rate: float) -> None:
 
 def get_sumo_begin_time(map_config: str) -> int:
     """Parse the SUMO <begin> value from the .sumocfg referenced in omnetpp.ini."""
-    ini_path = os.path.join(WORKSPACE_DIR, "cp-trustfulness", "omnetpp.ini")
+    ini_path = os.path.join(WORKSPACE_DIR, "artery", "omnetpp.ini")
     sumocfg_rel = None
 
     if not os.path.exists(ini_path):
@@ -103,8 +103,8 @@ def get_sumo_begin_time(map_config: str) -> int:
     if not sumocfg_rel:
         return 0
 
-    # Resolve path relative to cp-trustfulness/
-    sumocfg_path = os.path.normpath(os.path.join(WORKSPACE_DIR, "cp-trustfulness", sumocfg_rel))
+    # Resolve path relative to artery/
+    sumocfg_path = os.path.normpath(os.path.join(WORKSPACE_DIR, "artery", sumocfg_rel))
     if not os.path.exists(sumocfg_path):
         return 0
 
@@ -125,7 +125,7 @@ def patch_sumocfg(map_config: str, start_time: int) -> None:
     value with *start_time*, and verifies the patch before returning.
     A no-op when the file already has the requested begin time.
     """
-    ini_path = os.path.join(WORKSPACE_DIR, "cp-trustfulness", "omnetpp.ini")
+    ini_path = os.path.join(WORKSPACE_DIR, "artery", "omnetpp.ini")
     sumocfg_rel = None
 
     if not os.path.exists(ini_path):
@@ -147,7 +147,7 @@ def patch_sumocfg(map_config: str, start_time: int) -> None:
         print(f"  [WARN] No sumocfg entry found for config '{map_config}'; skipping patch.")
         return
 
-    sumocfg_path = os.path.normpath(os.path.join(WORKSPACE_DIR, "cp-trustfulness", sumocfg_rel))
+    sumocfg_path = os.path.normpath(os.path.join(WORKSPACE_DIR, "artery", sumocfg_rel))
     if not os.path.exists(sumocfg_path):
         print(f"  [WARN] sumocfg not found at {sumocfg_path}; skipping patch.")
         return
@@ -173,7 +173,7 @@ def patch_sumocfg(map_config: str, start_time: int) -> None:
 
 def get_start_time_from_ini(map_config: str) -> int:
     """Parse omnetpp.ini to find *.traci.core.startTime for the given map config."""
-    ini_path = os.path.join(WORKSPACE_DIR, "cp-trustfulness", "omnetpp.ini")
+    ini_path = os.path.join(WORKSPACE_DIR, "artery", "omnetpp.ini")
     start_time = 0
     if not os.path.exists(ini_path):
         return start_time
@@ -332,11 +332,12 @@ def run_simulation(config: ExperimentConfig, mode: str = "headless", extra_args:
 
     if use_docker:
         build_dir = "/workspace/build"
-        scenario_dir = "/workspace/cp-trustfulness"
+        scenario_dir = "/workspace/cp-trustfulness/artery"
         host_wrapper = ["docker", "exec", "artery", "bash", "-c"]
     else:
-        build_dir = os.path.join(WORKSPACE_DIR, "build")
-        scenario_dir = os.path.join(WORKSPACE_DIR, "cp-trustfulness")
+        # Native execution fallback
+        build_dir = os.path.join(WORKSPACE_DIR, "../build")
+        scenario_dir = os.path.join(WORKSPACE_DIR, "artery")
         host_wrapper = ["bash", "-c"]
 
     # 4. Construct EXTRA_ARGS
@@ -389,7 +390,7 @@ def run_simulation(config: ExperimentConfig, mode: str = "headless", extra_args:
         export QT_X11_NO_MITSHM=1
         export LIBGL_ALWAYS_SOFTWARE=1
         export MESA_GL_VERSION_OVERRIDE=3.3
-        export LD_LIBRARY_PATH={build_dir}/artery:{build_dir}/artery/src/artery/envmod:{build_dir}/artery/src/traci:{build_dir}/artery/extern:{build_dir}/cp-trustfulness:$LD_LIBRARY_PATH
+        export LD_LIBRARY_PATH={build_dir}/artery:{build_dir}/artery/src/artery/envmod:{build_dir}/artery/src/traci:{build_dir}/artery/extern:{build_dir}/cp-trustfulness/artery:$LD_LIBRARY_PATH
         mkdir -p /tmp/runtime-devcontainer
 
         DISPLAY=$DISPLAY opp_run \
@@ -398,7 +399,7 @@ def run_simulation(config: ExperimentConfig, mode: str = "headless", extra_args:
             -n $INI_NED \
             -u {u_flag} \
             -c {c_flag} \
-            -l {build_dir}/cp-trustfulness/libartery_cp_trustfulness.so \
+            -l {build_dir}/cp-trustfulness/artery/libartery_cp_trustfulness.so \\
     """
 
     if time_limit:
@@ -551,6 +552,10 @@ def run_single_experiment(config: ExperimentConfig, extra_args: Optional[list[st
     if faulty_rate is not None:
         update_faulty_rate(faulty_rate)
 
+    actual_config = map_config
+    if mode == "gui":
+        actual_config = f"{map_config}-gui"
+
     print(f"{'='*70}")
     # 2. Run simulation
     print(f"\n  Running simulation (Mode: {mode})...")
@@ -562,12 +567,12 @@ def run_single_experiment(config: ExperimentConfig, extra_args: Optional[list[st
 
     # 3. Collect results
     print("  Collecting results...")
-    collected = collect_results(map_config, experiment_path)
+    collected = collect_results(actual_config, experiment_path)
     print(f"     Collected: {', '.join(collected)}")
 
     # 4. Run analysis
     print("  Running analysis...\n")
-    metrics = run_analysis(experiment_path, map_config)
+    metrics = run_analysis(experiment_path, actual_config)
     if not metrics:
         config["status"] = "analysis_failed"
         save_experiment(experiment_path, config, {})

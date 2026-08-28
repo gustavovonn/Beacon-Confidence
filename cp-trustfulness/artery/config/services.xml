@@ -6,6 +6,6 @@
     </service>
     
     <!-- Trust & Dead Reckoning observer service -->
-    <service type="src.modules.TrustService" name="DR">
+    <service type="config.neds.TrustService" name="DR">
     </service>
 </services>

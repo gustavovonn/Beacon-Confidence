@@ -1,4 +1,4 @@
-package src.modules;
+package config.neds;
 
 import artery.application.CaService;
 

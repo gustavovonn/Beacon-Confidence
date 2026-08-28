@@ -1,9 +1,11 @@
 add_artery_feature(cp_trustfulness
-    src/algorithms/DeadReckoningModels.cc
-    src/algorithms/TrustEvaluators.cc
-    src/algorithms/TrustService.cc
-    src/algorithms/FaultyCaService.cc
+    ../src/DeadReckoningModels.cc
+    ../src/TrustEvaluators.cc
+    src/TrustService.cc
+    src/FaultyCaService.cc
 )
+
+target_include_directories(cp_trustfulness PUBLIC ../include include)
 
 if(WITH_ENVMOD)
     target_link_libraries(cp_trustfulness PUBLIC envmod)
