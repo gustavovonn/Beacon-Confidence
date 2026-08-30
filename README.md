@@ -15,6 +15,10 @@ This repository hosts a V2X simulation framework based on an overlay architectur
 - Docker
 - Python3 (3.14.x)
 
+### VeReMi Extension Simulations Prerequesites
+
+- Apache Arrow for C++
+
 *Note: The primary tested setup for this framework was on Ubuntu 24.04.4 LTS.*
 
 ## Setup
@@ -44,6 +48,8 @@ cd ../../
 
 ## Build and Run
 
+### Artery Simulation
+
 1. **Setup Environment:** Builds the `artery-dev` Docker image and starts the persistent container. Only needs to be run once.
 ```bash
 ./scripts/setup_docker.sh
@@ -71,12 +77,23 @@ cp-trustfulness/artery/.venv/bin/python3 cp-trustfulness/artery/scripts/run_batc
 
 *Results, SQLite databases, and efficacy reports are exported to `cp-trustfulness/artery/results/`.*
 
-6. **VeReMi Extension Data Pipeline:** Downloads the VeReMi dataset, extracts nested zips, and converts the JSON records into a Parquet datalake for faster processing.
+### VeRemi Extension Simulation
+
+1. **VeReMi Extension Data Pipeline:** Downloads the VeReMi dataset, extracts nested zips, and converts the JSON records into a Parquet datalake for faster processing.
 ```bash
 ./veremi-extension/run_pipeline.sh
 ```
 
-7. **Run VeReMi Batch Sweep:** Executes the detection algorithm across the VeReMi Extension dataset scenarios (e.g., ConstPos, RandomSpeed), generating F1-score evaluation metrics.
+2. **Build Simulation:** Compiles the runner needed for the simulation, in `cp-trustfulness/veremi-extension/`.
+
+```bash
+cd cp-trustfulness/veremi-extension/
+mkdir build
+cd build
+cmake .. && make
+```
+
+3. **Run VeReMi Batch Sweep:** Executes the detection algorithm across the VeReMi Extension dataset scenarios (e.g., ConstPos, RandomSpeed), generating F1-score evaluation metrics.
 ```bash
 ./scripts/run_veremi_batch.sh --sweep
 ```
