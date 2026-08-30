@@ -109,9 +109,9 @@ def main():
     args = parser.parse_args()
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    workspace_dir = os.path.abspath(os.path.join(script_dir, "../.."))
+    workspace_dir = os.path.abspath(os.path.join(script_dir, "../../.."))
     runner_path = os.path.join(workspace_dir, "cp-trustfulness", "veremi-extension", "build", "veremi_runner")
-    results_dir = os.path.join(script_dir, "results")
+    results_dir = os.path.join(os.path.dirname(script_dir), "results")
     
     if not os.path.exists(runner_path):
         print(f"Error: {runner_path} not found. Please compile it first.")

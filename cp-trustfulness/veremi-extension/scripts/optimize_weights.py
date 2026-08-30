@@ -9,11 +9,14 @@ print("Running veremi_runner on honest baseline to extract prediction errors..."
 import os
 import shutil
 
+script_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(script_dir)
+
 print("Setting up honest baseline dataset...")
-tmp_dir = "honest_baseline_tmp"
+tmp_dir = os.path.join(parent_dir, "honest_baseline_tmp")
 os.makedirs(tmp_dir, exist_ok=True)
 # Copy a few honest files (A0) to the temp directory
-source_dir = "../../veremi-extension/parquet/ConstPos_0709/VeReMi_28800_32400_2022-9-11_20:45:32"
+source_dir = os.path.abspath(os.path.join(parent_dir, "../../veremi-extension/parquet/ConstPos_0709/VeReMi_28800_32400_2022-9-11_20:45:32"))
 copied = 0
 for f in os.listdir(source_dir):
     if "-A0-" in f:
@@ -24,8 +27,9 @@ for f in os.listdir(source_dir):
 
 print(f"Copied {copied} honest vehicle traces to {tmp_dir}")
 
+runner_path = os.path.join(parent_dir, "build", "veremi_runner")
 cmd = [
-    "./build/veremi_runner",
+    runner_path,
     "--dir",
     tmp_dir
 ]

@@ -9,6 +9,7 @@
 #include <cmath>
 #include <memory>
 #include <algorithm>
+#include <chrono>
 
 using namespace artery;
 
@@ -309,13 +310,16 @@ private:
     std::unique_ptr<IDeadReckoningModel> drModel;
     std::unique_ptr<ITrustEvaluator> trustEvaluator;
     TrustEvaluationParams params;
+    bool silent;
     
     std::map<long, std::deque<KinematicState>> m_cache;
     std::map<long, double> m_scores;
 
 public:
     TrustEvaluationEngine(const std::string& drModelName, const std::string& trustModelName, 
-                          double maxPosDev = 4.3506, double contextSpeedWeight = 5.2264, double contextYawWeight = 0.6536) {
+                          double maxPosDev = 4.3506, double contextSpeedWeight = 5.2264, double contextYawWeight = 0.6536,
+                          bool silentMode = false) {
+        silent = silentMode;
         if (drModelName == "HistoryAwareCTRA") {
             drModel = std::make_unique<CartesianHistoryAwareCtraModel>();
         } else {
@@ -329,9 +333,11 @@ public:
         params.contextSpeedWeight = contextSpeedWeight;
         params.contextYawWeight = contextYawWeight;
 
+        if (!silent) {
 #ifndef DISABLE_OUTPUT
-        std::cout << "rcvTime,sender,score,distError,centroidDeviation\n";
+            std::cout << "rcvTime,sender,score,distError,centroidDeviation\n";
 #endif
+        }
     }
     
     void processMessage(const RawMessage& msg) {
@@ -380,13 +386,15 @@ public:
         double newScore = trustEvaluator->evaluateTrust(context, params);
         m_scores[msg.sender] = newScore;
 
+        if (!silent) {
 #ifndef DISABLE_OUTPUT
-        std::cout << msg.rcvTime << "," << msg.sender << "," << newScore << "," 
-                  << distError << "," << centroidDeviation << "\n";
+            std::cout << msg.rcvTime << "," << msg.sender << "," << newScore << "," 
+                      << distError << "," << centroidDeviation << "\n";
 #endif
+        }
 
         history.push_back(currentState);
-        if (history.size() > 10) {
+        if (history.size() > 5) {
             history.pop_front();
         }
     }
@@ -402,6 +410,7 @@ int main(int argc, char* argv[]) {
     double maxPosDev = 4.3506;
     double speedWeight = 5.2264;
     double yawWeight = 0.6536;
+    bool profileMode = false;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -417,6 +426,8 @@ int main(int argc, char* argv[]) {
             speedWeight = std::stod(argv[++i]);
         } else if (arg == "--yawWeight" && i + 1 < argc) {
             yawWeight = std::stod(argv[++i]);
+        } else if (arg == "--profile") {
+            profileMode = true;
         }
     }
     
@@ -429,11 +440,31 @@ int main(int argc, char* argv[]) {
     auto messages = ParquetMessageExtractor::extractMessages(dirPath);
     
     // 2. Initialize engine
-    TrustEvaluationEngine engine(drModelName, trustModelName, maxPosDev, speedWeight, yawWeight);
+    TrustEvaluationEngine engine(drModelName, trustModelName, maxPosDev, speedWeight, yawWeight, profileMode);
 
     // 3. Process stream
-    for (const auto& msg : messages) {
-        engine.processMessage(msg);
+    if (profileMode) {
+        std::cout << "Starting performance profiling over " << messages.size() << " messages...\n";
+        auto start = std::chrono::high_resolution_clock::now();
+        
+        for (const auto& msg : messages) {
+            engine.processMessage(msg);
+        }
+        
+        auto end = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+        
+        std::cout << "----------------------------------------\n";
+        std::cout << "PROFILING RESULTS\n";
+        std::cout << "----------------------------------------\n";
+        std::cout << "Total Execution Time: " << duration << " us\n";
+        std::cout << "Messages Processed:   " << messages.size() << "\n";
+        std::cout << "Avg Latency per Msg:  " << (double)duration / messages.size() << " us\n";
+        std::cout << "----------------------------------------\n";
+    } else {
+        for (const auto& msg : messages) {
+            engine.processMessage(msg);
+        }
     }
 
     return 0;
