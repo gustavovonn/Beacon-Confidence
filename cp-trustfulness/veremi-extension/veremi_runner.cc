@@ -356,9 +356,11 @@ public:
             std::deque<KinematicState> newHistory;
             newHistory.push_back(currentState);
             m_cache[msg.sender] = newHistory;
+            if (!silent) {
 #ifndef DISABLE_OUTPUT
             std::cout << msg.rcvTime << "," << msg.sender << ",1.0,0.0,0.0\n";
 #endif
+            }
             return;
         }
 
