@@ -30,17 +30,16 @@ cd cp-artery
 git submodule update --init --recursive
 ```
 
-3. Prepare the Mobility Scenarios (LuST and MoST):
-```bash
-./sumo-scenarios/lust_rush_config.sh
-./sumo-scenarios/most_rush_config.sh
-```
+3. Install Python dependencies:
 
-4. Install the Python3 dependencies. We recommend the creation of a virtual environment for this project, as follows:
+The project uses self-contained experiments and modules. You should create a virtual environment inside the module you are working with (e.g., `cp-trustfulness/artery`, `cp-trustfulness/veremi-extension`, or `veremi-extension`). For example, to set up the Artery simulation scripts:
+
 ```bash
+cd cp-trustfulness/artery
 python3 -m venv .venv
 source .venv/bin/activate
 python3 -m pip install -r requirements.txt
+cd ../../
 ```
 
 ## Build and Run
@@ -55,22 +54,39 @@ python3 -m pip install -r requirements.txt
 ./scripts/build_simulation.sh
 ```
 
-3. **Run a Single Simulation:** Executes a specific scenario with manual parameter overrides. Ideal for testing and debugging.
+3. **Run a Single Simulation:** Executes a specific scenario with manual parameter overrides. Ideal for testing and debugging. Ensure you have activated the virtual environment in `cp-trustfulness/artery/`.
 ```bash
-python3 cp-trustfulness/scripts/experiment.py --map lust --dr HistoryAwareCTRA --trust BetaReputation
+cp-trustfulness/artery/.venv/bin/python3 cp-trustfulness/artery/scripts/experiment.py --map lust --dr HistoryAwareCTRA --trust BetaReputation
 ```
 
 4. **Automated Context Tuning:** Uses machine learning to scientifically discover the optimal physical thresholds (`maxPositionDeviation`, `speedWeight`, `yawWeight`) by running a clean baseline. Currently, this script just prints out the recommended weights (*TODO: Add persistent statistics and training parameters to allow reproducibility*).
 ```bash
-python3 cp-trustfulness/scripts/scorer_context_tuning.py --map lust --training-time 100s --validation-time 45s --fault-profile random_noise
+cp-trustfulness/artery/.venv/bin/python3 cp-trustfulness/artery/scripts/scorer_context_tuning.py --map lust --training-time 100s --validation-time 45s --fault-profile random_noise
 ```
 
-5. **Run a Batch Sweep:** Executes multiple automated simulations sweeping across various parameters. Ideal for data collection, graphing, and result generation.
+5. **Run a Batch Sweep:** Executes multiple automated simulations sweeping across various parameters. Ideal for data collection, graphing, and result generation. Alternatively, use `./scripts/run_artery_batch.sh`.
 ```bash
-python3 cp-trustfulness/scripts/run_batch_sweep.py
+cp-trustfulness/artery/.venv/bin/python3 cp-trustfulness/artery/scripts/run_batch_sweep.py
 ```
 
-*Results, SQLite databases, and efficacy reports are exported to `cp-trustfulness/results/`.*
+*Results, SQLite databases, and efficacy reports are exported to `cp-trustfulness/artery/results/`.*
+
+6. **VeReMi Extension Data Pipeline:** Downloads the VeReMi dataset, extracts nested zips, and converts the JSON records into a Parquet datalake for faster processing.
+```bash
+./veremi-extension/run_pipeline.sh
+```
+
+7. **Run VeReMi Batch Sweep:** Executes the detection algorithm across the VeReMi Extension dataset scenarios (e.g., ConstPos, RandomSpeed), generating F1-score evaluation metrics.
+```bash
+./scripts/run_veremi_batch.sh --sweep
+```
+
+*VeReMi results and reports are exported to `cp-trustfulness/veremi-extension/results/`.*
+
+8. **Standalone C++ Engine Profiling:** To evaluate computational cost and latency outside of the OMNeT++ environment (e.g., for embedded hardware benchmarking), you can run the core `veremi_runner` directly with the `--profile` flag on any parquet data folder.
+```bash
+./cp-trustfulness/veremi-extension/build/veremi_runner --dir <path-to-scenario> --profile
+```
 
 ## References
 
@@ -79,3 +95,4 @@ python3 cp-trustfulness/scripts/run_batch_sweep.py
 - [OMNeT++](https://omnetpp.org/)
 - [LuST Scenario](https://github.com/lcodeca/LuSTScenario)
 - [MoST Scenario](https://github.com/lcodeca/MoSTScenario)
+- [VeReMi Extension Dataset](https://zenodo.org/records/20090854)
