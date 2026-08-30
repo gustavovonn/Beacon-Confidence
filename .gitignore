@@ -74,4 +74,11 @@ cp-trustfulness/.qtenvrc
 *__pycache__*
 latex/
 paper/
-.venv/*
+**/.venv/*
+references/
+veremi-extension/data/
+veremi-extension/parquet
+**/results/*
+**/.cmdenv-log
+cp-trustfulness/veremi-extension/honest_baseline_tmp/
+docs/
