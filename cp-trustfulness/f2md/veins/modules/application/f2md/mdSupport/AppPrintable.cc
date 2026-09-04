@@ -10,6 +10,7 @@
  *******************************************************************************/
 
 #include <veins/modules/application/f2md/mdSupport/AppPrintable.h>
+#include <cstring>
 
 AppPrintable::AppPrintable(const char* name) {
     strcpy(this->name, name);

@@ -11,7 +11,7 @@
 
 #include "LocalAttackServer.h"
 using namespace std;
-using namespace boost;
+
 
 LocalAttackServer::LocalAttackServer() {
 }

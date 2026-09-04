@@ -12,7 +12,7 @@
 #include <veins/modules/application/f2md/mdSupport/HTTPRequest.h>
 
 using namespace std;
-using namespace boost;
+
 HTTPRequest::HTTPRequest(int portno, std::string host){
     this->portInt = portno;
     this->hostStr = host;

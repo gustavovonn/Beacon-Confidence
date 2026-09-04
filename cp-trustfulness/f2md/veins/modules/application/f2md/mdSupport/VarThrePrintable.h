@@ -14,7 +14,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>     /* atof */
-#include <boost/algorithm/string.hpp>
+
 #include <iostream>
 #include <string>
 #include <vector>

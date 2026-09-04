@@ -11,7 +11,7 @@
 
 #include <stdio.h>
 #include <stdlib.h> /* atof */
-#include <boost/algorithm/string.hpp>
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -22,7 +22,7 @@
 #include <algorithm> // std::max
 
 using namespace std;
-using namespace boost;
+
 
 static double print_count = 0;
 

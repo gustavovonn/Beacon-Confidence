@@ -21,9 +21,9 @@
 #include <cmath>
 
 #include <ctime>
-#include <boost/random/mersenne_twister.hpp>
-#include <boost/random/uniform_int_distribution.hpp>
-#include <boost/random/variate_generator.hpp>
+
+
+
 #include <veins/modules/application/f2md/mdSupport/GeneralLib.h>
 #include <veins/base/utils/Coord.h>
 #include <veins/modules/application/f2md/mdSupport/MDMLib.h>

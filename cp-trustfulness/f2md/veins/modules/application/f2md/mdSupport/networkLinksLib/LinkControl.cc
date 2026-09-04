@@ -18,6 +18,8 @@
 //
 
 #include <veins/modules/application/f2md/mdSupport/networkLinksLib/LinkControl.h>
+#include <fstream>
+#include <sstream>
 
 
 LinkControl::~LinkControl() {

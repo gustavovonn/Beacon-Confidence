@@ -17,11 +17,11 @@
 #include <string>
 // Used in randomization
 #include <ctime>
-#include <boost/random/mersenne_twister.hpp>
-#include <boost/random/uniform_int_distribution.hpp>
-#include <boost/random/variate_generator.hpp>
+
+
+
 using namespace std;
-using namespace boost;
+
 
 class GeneralLib {
 public:

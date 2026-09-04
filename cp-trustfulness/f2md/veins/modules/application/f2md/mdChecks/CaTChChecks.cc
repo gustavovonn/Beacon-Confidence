@@ -11,7 +11,7 @@
 
 #include <stdio.h>
 #include <stdlib.h> /* atof */
-#include <boost/algorithm/string.hpp>
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <veins/modules/application/f2md/mdChecks/CaTChChecks.h>
@@ -20,7 +20,7 @@
 #include <vector>
 
 using namespace std;
-using namespace boost;
+
 
 CaTChChecks::CaTChChecks(int version, unsigned long myPseudonym,
     veins::Coord myPosition, veins::Coord myPositionConfidence, veins::Coord myHeading,

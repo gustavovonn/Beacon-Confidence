@@ -12,7 +12,7 @@
 #include <veins/modules/application/f2md/mdApplications/MachineLearningApp.h>
 
 using namespace std;
-using namespace boost;
+
 
 MachineLearningApp::MachineLearningApp(int version, int port, std::string host) :
         MDApplication(version) {

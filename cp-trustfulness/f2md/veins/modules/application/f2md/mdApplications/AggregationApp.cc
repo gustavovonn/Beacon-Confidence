@@ -11,7 +11,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>     /* atof */
-#include <boost/algorithm/string.hpp>
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <veins/modules/application/f2md/mdApplications/AggregationApp.h>
@@ -21,7 +21,7 @@
 
 
 using namespace std;
-using namespace boost;
+
 
 AggrigationApp::AggrigationApp(int version,double Threshold ,double devValue, double deltaTrustTime,
         int maxBsmTrustNum) :

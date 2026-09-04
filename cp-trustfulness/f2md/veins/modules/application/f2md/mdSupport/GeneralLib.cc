@@ -10,6 +10,7 @@
 *******************************************************************************/
 
 #include <veins/modules/application/f2md/mdSupport/GeneralLib.h>
+#include <random>
 
 GeneralLib::GeneralLib(){
 }
@@ -19,7 +20,7 @@ double GeneralLib::RandomDouble(double fMin, double fMax)
     struct timespec tm;
     clock_gettime(CLOCK_REALTIME, &tm);
 
-    random::mt19937 rng(tm.tv_nsec);
+    std::mt19937 rng(tm.tv_nsec);
     std::uniform_real_distribution<> one(fMin,fMax);
 
     double f = one(rng);
@@ -41,7 +42,7 @@ double GeneralLib::GaussianRandomDouble(double mean, double stddev) {
     struct timespec tm;
     clock_gettime(CLOCK_REALTIME, &tm);
 
-    random::mt19937 rng(tm.tv_nsec);
+    std::mt19937 rng(tm.tv_nsec);
 
     std::normal_distribution<> d{mean,stddev};
     return d(rng);

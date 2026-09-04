@@ -14,7 +14,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>     /* atof */
-#include <boost/algorithm/string.hpp>
+
 #include <veins/modules/application/f2md/mdEnumTypes/MbTypes.h>
 #include <veins/modules/application/f2md/mdEnumTypes/MdChecksTypes.h>
 #include <iostream>
@@ -24,7 +24,7 @@
 
 
 using namespace std;
-using namespace boost;
+
 
 class AppPrintable {
 

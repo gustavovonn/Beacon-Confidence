@@ -11,7 +11,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>     /* atof */
-#include <boost/algorithm/string.hpp>
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <veins/modules/application/f2md/mdApplications/MDApplication.h>
@@ -20,7 +20,7 @@
 #include <vector>
 
 using namespace std;
-using namespace boost;
+
 
 MDApplication::MDApplication(int version) {
 
