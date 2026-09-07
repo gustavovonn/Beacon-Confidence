@@ -82,3 +82,7 @@ veremi-extension/parquet
 **/.cmdenv-log
 cp-trustfulness/veremi-extension/honest_baseline_tmp/
 docs/
+cp-trustfulness/f2md/results/*
+cp-trustfulness/f2md/initramfs.cpio.gz
+cp-trustfulness/f2md/busybox/
+cp-trustfulness/f2md/veremi/

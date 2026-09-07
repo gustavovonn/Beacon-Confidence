@@ -1,9 +1,6 @@
 #pragma once
 
-// Include the newly created Coord mock
-#include "veins/base/utils/Coord.h"
-
-// If simtime_t is defined in omnetpp.h, make sure it's available
+#include "veins/base/utils/Coord.h"  // Coord mock
 #include "omnetpp.h"
 
 namespace LAddress {
@@ -21,6 +18,13 @@ public:
     unsigned long pseudonym = 0;
     int mbType = 0;       
     int attackType = 0;   
+    
+    // Observer / Receiver context for offline plausibility evaluation
+    veins::Coord recv_pos;
+    veins::Coord recv_speed;
+    veins::Coord recv_heading;
+    long receiver_id = 0;
+    long receiver_pseudo = 0;
 
     veins::Coord& getSenderPos() { return pos; }
     veins::Coord& getSenderPosConfidence() { return posConf; }

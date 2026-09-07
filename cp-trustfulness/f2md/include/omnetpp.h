@@ -32,7 +32,8 @@ public:
     simtime_t operator+(const simtime_t& o) const { return simtime_t(val + o.val); }
 };
 
-inline simtime_t simTime() { return simtime_t(0.0); }
+extern double global_sim_time;
+inline simtime_t simTime() { return simtime_t(global_sim_time); }
 
 // 3. Mock OMNeT++ classes (cObject, cOutVector, etc.)
 namespace omnetpp {
