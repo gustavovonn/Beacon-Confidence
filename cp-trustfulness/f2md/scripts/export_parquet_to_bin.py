@@ -94,14 +94,21 @@ def convert_file(parquet_path, bin_path):
     size_mb = os.path.getsize(bin_path) / (1024 * 1024)
     print(f"    [+] Wrote {num_records:,} records to {bin_path} ({size_mb:.2f} MB)")
 
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+F2MD_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
+DEFAULT_INPUT_DIR = os.path.join(F2MD_DIR, "veremi", "parquet")
+DEFAULT_OUTPUT_DIR = os.path.join(F2MD_DIR, "veremi", "bin")
+
 def main():
     parser = argparse.ArgumentParser(description="Export Parquet traces to zero-dependency binary format")
-    parser.add_argument("--input", "-i", type=str, help="Input parquet file or directory")
-    parser.add_argument("--output-dir", "-o", type=str, default=None, help="Output directory for .bin files")
+    parser.add_argument("--input", "-i", type=str, default=DEFAULT_INPUT_DIR,
+                        help=f"Input parquet file or directory (default: {DEFAULT_INPUT_DIR})")
+    parser.add_argument("--output-dir", "-o", type=str, default=DEFAULT_OUTPUT_DIR,
+                        help=f"Output directory for .bin files (default: {DEFAULT_OUTPUT_DIR})")
     args = parser.parse_args()
 
-    input_path = args.input or "/home/gust/CP-Artery/cp-trustfulness/f2md/veremi"
-    out_dir = args.output_dir or (os.path.dirname(input_path) if os.path.isfile(input_path) else input_path)
+    input_path = os.path.abspath(args.input)
+    out_dir = os.path.abspath(args.output_dir)
 
     if os.path.isfile(input_path):
         out_name = os.path.splitext(os.path.basename(input_path))[0] + ".bin"

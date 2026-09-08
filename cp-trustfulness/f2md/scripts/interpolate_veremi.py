@@ -12,9 +12,9 @@ Features:
   - Supports individual profiles or batch processing of all 8 rush hour profiles.
 
 Usage:
-  python3 prepare_benchmark_dataset.py --all-profiles
-  python3 prepare_benchmark_dataset.py --profile ConstPos_0709
-  python3 prepare_benchmark_dataset.py --profile RandomPos_0709 --max-msgs 50000
+  python3 interpolate_veremi.py --all-profiles
+  python3 interpolate_veremi.py --profile ConstPos_0709
+  python3 interpolate_veremi.py --profile RandomPos_0709 --max-msgs 50000
 """
 
 import os
@@ -159,6 +159,21 @@ def process_profile(profile_name, source_data_dir, output_dir, max_msgs, num_wor
         candidates = [d for d in glob.glob(os.path.join(profile_dir, "VeReMi_*")) if os.path.isdir(d)]
     
     if not candidates:
+        # Check if there is a .zip archive to extract
+        zip_candidates = [z for z in glob.glob(os.path.join(profile_dir, "VeReMi_28800_32400_*.zip")) if os.path.isfile(z)]
+        if not zip_candidates:
+            zip_candidates = [z for z in glob.glob(os.path.join(profile_dir, "VeReMi_*.zip")) if os.path.isfile(z)]
+        if zip_candidates:
+            target_zip = sorted(zip_candidates)[0]
+            print(f"[*] Extracting archive: {os.path.basename(target_zip)}...")
+            import zipfile
+            with zipfile.ZipFile(target_zip, 'r') as zip_ref:
+                zip_ref.extractall(profile_dir)
+            candidates = [d for d in glob.glob(os.path.join(profile_dir, "VeReMi_28800_32400_*")) if os.path.isdir(d)]
+            if not candidates:
+                candidates = [d for d in glob.glob(os.path.join(profile_dir, "VeReMi_*")) if os.path.isdir(d)]
+
+    if not candidates:
         print(f"[!] Error: No extracted VeReMi trace directory found in {profile_dir}")
         return False
 
@@ -214,14 +229,36 @@ def process_profile(profile_name, source_data_dir, output_dir, max_msgs, num_wor
     gc.collect()
     return True
 
+def get_default_paths():
+    """Dynamically determine repository and data directories from script location."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    f2md_dir = os.path.abspath(os.path.join(script_dir, ".."))
+    
+    # Locate project root (where .git is located or 2 levels up from f2md: repo_root/cp-trustfulness/f2md)
+    cur = script_dir
+    repo_root = None
+    while cur and cur != os.path.dirname(cur):
+        if os.path.isdir(os.path.join(cur, ".git")):
+            repo_root = cur
+            break
+        cur = os.path.dirname(cur)
+    if not repo_root:
+        repo_root = os.path.abspath(os.path.join(f2md_dir, "..", ".."))
+
+    default_source = os.path.join(repo_root, "veremi-extension", "data")
+    default_output = os.path.join(f2md_dir, "veremi", "parquet")
+    return default_source, default_output
+
+DEFAULT_SOURCE_DIR, DEFAULT_OUTPUT_DIR = get_default_paths()
+
 def main():
     parser = argparse.ArgumentParser(description="VeReMi Benchmark Dataset Preparation (Host-Only ETL)")
     parser.add_argument("--profile", type=str, help="Specific profile to process (e.g. ConstPos_0709)")
     parser.add_argument("--all-profiles", action="store_true", help="Process all 8 rush hour profiles")
-    parser.add_argument("--source-dir", type=str, default="/home/gust/CP-Artery/veremi-extension/data",
-                        help="Path to unzipped VeReMi Extension raw datasets")
-    parser.add_argument("--output-dir", type=str, default="/home/gust/CP-Artery/cp-trustfulness/f2md/veremi",
-                        help="Output directory for generated Parquet files")
+    parser.add_argument("--source-dir", type=str, default=DEFAULT_SOURCE_DIR,
+                        help=f"Path to unzipped VeReMi Extension raw datasets (default: {DEFAULT_SOURCE_DIR})")
+    parser.add_argument("--output-dir", type=str, default=DEFAULT_OUTPUT_DIR,
+                        help=f"Output directory for generated Parquet files (default: {DEFAULT_OUTPUT_DIR})")
     parser.add_argument("--max-msgs", type=int, default=50000,
                         help="Maximum messages to retain per profile (default: 50000; 0 for full trace)")
     parser.add_argument("--jobs", "-j", type=int, default=min(4, os.cpu_count() or 2),
@@ -229,10 +266,12 @@ def main():
 
     args = parser.parse_args()
 
+    args.source_dir = os.path.abspath(args.source_dir)
+    args.output_dir = os.path.abspath(args.output_dir)
+
+    # Default to all profiles if neither is specified
     if not args.profile and not args.all_profiles:
-        print("Usage: specify either --profile <name> or --all-profiles")
-        parser.print_help()
-        sys.exit(1)
+        args.all_profiles = True
 
     targets = RUSH_HOUR_PROFILES if args.all_profiles else [args.profile]
 
