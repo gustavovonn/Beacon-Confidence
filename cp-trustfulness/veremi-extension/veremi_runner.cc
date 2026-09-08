@@ -312,6 +312,7 @@ private:
     std::unique_ptr<ITrustEvaluator> trustEvaluator;
     TrustEvaluationParams params;
     bool silent;
+    size_t historySize;
     
     std::map<long, std::deque<KinematicState>> m_cache;
     std::map<long, double> m_scores;
@@ -319,7 +320,8 @@ private:
 public:
     TrustEvaluationEngine(const std::string& drModelName, const std::string& trustModelName, 
                           const TrustEvaluationParams& evalParams,
-                          bool silentMode = false) {
+                          bool silentMode = false, size_t histSize = 5) 
+        : historySize(histSize) {
         silent = silentMode;
         if (drModelName == "HistoryAwareCTRA") {
             drModel = std::make_unique<CartesianHistoryAwareCtraModel>();
@@ -393,7 +395,7 @@ public:
         }
 
         history.push_back(currentState);
-        if (history.size() > 5) {
+        while (history.size() > historySize) {
             history.pop_front();
         }
     }
@@ -407,6 +409,7 @@ int main(int argc, char* argv[]) {
     std::string trustModelName = "BetaReputation";
     std::string dirPath = "";
     bool profileMode = false;
+    size_t historySize = 5;
 
     TrustEvaluationParams params;
     // Offline optimized baseline weights:
@@ -446,11 +449,13 @@ int main(int argc, char* argv[]) {
             params.maxBetaPenalty = std::stod(argv[++i]);
         } else if (arg == "--profile") {
             profileMode = true;
+        } else if ((arg == "--historySize" || arg == "--history-size" || arg == "--history") && i + 1 < argc) {
+            historySize = std::stoul(argv[++i]);
         }
     }
     
     if (dirPath.empty()) {
-        std::cerr << "Usage: " << argv[0] << " --dir <path> [--dr <model>] [--trust <model>]\n";
+        std::cerr << "Usage: " << argv[0] << " --dir <path> [--dr <model>] [--trust <model>] [--historySize <size>] [--profile]\n";
         return 1;
     }
 
@@ -458,7 +463,7 @@ int main(int argc, char* argv[]) {
     auto messages = ParquetMessageExtractor::extractMessages(dirPath);
     
     // 2. Initialize engine
-    TrustEvaluationEngine engine(drModelName, trustModelName, params, profileMode);
+    TrustEvaluationEngine engine(drModelName, trustModelName, params, profileMode, historySize);
 
     // 3. Process stream
     if (profileMode) {
@@ -475,6 +480,7 @@ int main(int argc, char* argv[]) {
         std::cout << "----------------------------------------\n";
         std::cout << "PROFILING RESULTS\n";
         std::cout << "----------------------------------------\n";
+        std::cout << "History Size:         " << historySize << "\n";
         std::cout << "Total Execution Time: " << duration << " us\n";
         std::cout << "Messages Processed:   " << messages.size() << "\n";
         std::cout << "Avg Latency per Msg:  " << (double)duration / messages.size() << " us\n";
