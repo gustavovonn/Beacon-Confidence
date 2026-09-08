@@ -309,6 +309,11 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    if (!std::filesystem::exists(dataPath)) {
+        std::cerr << "[!] Error: Dataset path does not exist: " << dataPath << "\n";
+        return 1;
+    }
+
     std::vector<std::string> tiersToRun;
     if (tier == "all") {
         tiersToRun = {"1", "2", "3"};
@@ -323,6 +328,11 @@ int main(int argc, char* argv[]) {
                 res = runOlsCtraPipeline(dataPath, curTier, stage2, maxMsgs, profileMode);
             } else {
                 res = runF2mdPipeline(dataPath, curTier, stage1, stage2, maxMsgs, profileMode);
+            }
+
+            if (res.total_messages <= 0) {
+                std::cerr << "[!] Error: 0 messages processed from dataset: " << dataPath << "\n";
+                return 1;
             }
 
             if (profileMode) {
