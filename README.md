@@ -19,6 +19,11 @@ This repository hosts a V2X simulation framework based on an overlay architectur
 
 - Apache Arrow for C++
 
+### F2MD Simulations Prerequesites
+
+- Apache Arrow for C++
+- Boost library for C++
+
 *Note: The primary tested setup for this framework was on Ubuntu 24.04.4 LTS.*
 
 ## Setup
@@ -100,9 +105,30 @@ cmake .. && make
 
 *VeReMi results and reports are exported to `cp-trustfulness/veremi-extension/results/`.*
 
-8. **Standalone C++ Engine Profiling:** To evaluate computational cost and latency outside of the OMNeT++ environment (e.g., for embedded hardware benchmarking), you can run the core `veremi_runner` directly with the `--profile` flag on any parquet data folder.
+4. **Standalone C++ Engine Profiling:** To evaluate computational cost and latency outside of the OMNeT++ environment (e.g., for embedded hardware benchmarking), you can run the core `veremi_runner` directly with the `--profile` flag on any parquet data folder.
 ```bash
 ./cp-trustfulness/veremi-extension/build/veremi_runner --dir <path-to-scenario> --profile
+```
+
+### F2MD Simulation
+
+1. **VeReMi Extension Data Pipeline:** Downloads the VeReMi dataset, extracts nested zips, and converts the JSON records into a Parquet datalake for faster processing.
+```bash
+./veremi-extension/run_pipeline.sh
+```
+
+2. **Build Simulation:** Compiles the runner needed for the simulation, in `cp-trustfulness/f2md/`.
+
+```bash
+cd cp-trustfulness/f2md/
+mkdir build
+cd build
+cmake .. && make
+```
+
+3. **Standalone C++ Engine Profiling:** To evaluate computational cost and latency outside of the OMNeT++ environment (e.g., for embedded hardware benchmarking), you can run the core `f2md_runner` directly with the `--profile` flag on any parquet data folder.
+```bash
+./cp-trustfulness/f2md/build/f2md_runner --dir <path-to-scenario> --profile
 ```
 
 ## References
