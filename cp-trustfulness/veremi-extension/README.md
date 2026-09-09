@@ -103,16 +103,21 @@ python scripts/plot_window_sweep.py --all --variant 0709
 # 4. Evaluate ONLY afternoon scenarios (1416):
 python scripts/plot_window_sweep.py --all --variant 1416
 
-# 5. Fast parallel sweep across scenarios using 4 CPU workers:
-python scripts/plot_window_sweep.py --all --variant 0709 -j 4
+# 5. Fast parallel sweep — all scenarios, all CPU cores:
+python scripts/plot_window_sweep.py --all -j$(nproc)
 
 # 6. Custom window sizes & limits:
 python scripts/plot_window_sweep.py --scenario ConstPosOffset_1416 --window-sizes 4 6 8 10 12 15 20 25 30
 python scripts/plot_window_sweep.py --all --variant 0709 --limit 1
 
-# 7. Re-generate plot from existing JSON run without re-executing C++ binary:
-python scripts/plot_window_sweep.py --from-json results/run_20260908_152326/window_sweep_RandomSpeed_1416_20260908_152326.json
+# 7. Re-generate a single plot from an existing JSON run (no C++ re-execution):
+python scripts/plot_window_sweep.py --from-json results/run_20260908_212755/window_sweep_RandomSpeed_1416_20260908_212755.json
+
+# 8. Re-generate ALL plots from a completed run directory (thread-safe, parallel):
+python scripts/plot_window_sweep.py --from-json-dir results/run_20260908_212755 -j$(nproc)
 ```
+
+> **Thread safety**: When using `-j` > 1, all plotting is done via figure-scoped `fig.savefig()` calls rather than the global `plt` state machine, so multiple workers can render simultaneously without race conditions.
 
 **Output Figure Panels**:
 1. Detection Performance (F1 Score, Recall, Precision) vs. Window Size
@@ -125,23 +130,26 @@ python scripts/plot_window_sweep.py --from-json results/run_20260908_152326/wind
 ---
 
 ### B. Multi-Scenario Decision & Sensitivity Matrix (`plot_multi_scenario_comparison.py`)
-Aggregates the latest sweep runs across all scenarios in `results/`, calculates Borda ranks and composite utility scores, and determines the optimal general history window size ($W^*$):
+Aggregates sweep runs across all scenarios and produces a rich 3-section decision report to identify the globally optimal history window size ($W^*$):
 
 ```bash
-# Automatically discover and aggregate all latest scenario runs
+# Automatically discover and aggregate all latest scenario runs:
 python scripts/plot_multi_scenario_comparison.py
 
-# Compare specific scenarios only
-python scripts/plot_multi_scenario_comparison.py --scenarios ConstPosOffset_0709 ConstSpeedOffset_0709 RandomSpeed_1416
+# Point at a specific run directory:
+python scripts/plot_multi_scenario_comparison.py --files results/run_20260908_212755/window_sweep_*.json
 
-# Specify explicit JSON files
-python scripts/plot_multi_scenario_comparison.py --files results/run_*/window_sweep_*.json
+# Compare specific scenarios only:
+python scripts/plot_multi_scenario_comparison.py --scenarios ConstPosOffset_0709 ConstSpeedOffset_0709 RandomSpeed_1416
 ```
 
 **Generated Visualizations & Reports**:
-- **Sensitivity Heatmap (`results/plots/*_heatmap.png`, `.pdf`)**: Scenarios $\times$ Window Sizes matrix with aggregate summary rows (Macro Mean F1, Worst-case F1, and Latency).
+- **Sensitivity Heatmap (`results/plots/*_heatmap.png`, `.pdf`)**: Scenarios $\times$ Window Sizes matrix with aggregate summary rows.
 - **Optimization Dashboard (`results/plots/*_dashboard.png`, `.pdf`)**: 4-panel dashboard with macro F1 variance bands, worst-case curves, latency scaling, and composite utility score.
-- **Decision Matrix Report (`results/*_decision_summary.md`, `.csv`)**: Full statistical table with average ranks and recommended $W^*$.
+- **Decision Report (`results/*_decision_summary.md`, `.csv`)**: Three-section analysis:
+  1. **Per-Scenario Optimal W** — the window size that maximises F1 for each individual scenario, with full metrics at that window.
+  2. **Consensus Voting** — which W is voted best by the most scenarios, and which scenarios agree.
+  3. **Robust Aggregates** — median F1 and 10th-percentile F1 (P10) per window size, avoiding distortion from near-zero outlier scenarios; marginal F1 gain (ΔMedian F1) per step to identify diminishing returns.
 
 ---
 

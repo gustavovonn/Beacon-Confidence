@@ -10,6 +10,7 @@ import os
 import sys
 import argparse
 import json
+import glob
 from datetime import datetime
 
 # Optional plotting setup (headless backend friendly)
@@ -118,7 +119,7 @@ def plot_results(results, scenario_title, output_filepath):
     best_f1_idx = int(np.argmax(f1_scores))
     best_w = history_sizes[best_f1_idx]
 
-    plt.rcParams.update({
+    with plt.rc_context({
         'font.size': 11,
         'axes.labelsize': 12,
         'axes.titlesize': 13,
@@ -126,9 +127,9 @@ def plot_results(results, scenario_title, output_filepath):
         'ytick.labelsize': 10,
         'legend.fontsize': 10,
         'figure.titlesize': 15
-    })
+    }):
+        fig, axs = plt.subplots(2, 2, figsize=(14, 10))
 
-    fig, axs = plt.subplots(2, 2, figsize=(14, 10))
     fig.suptitle(f"VeReMi Tracking History Window Analysis: {scenario_title}", fontweight='bold', y=0.98)
 
     # -------------------------------------------------------------------------
@@ -187,7 +188,7 @@ def plot_results(results, scenario_title, output_filepath):
     # -------------------------------------------------------------------------
     ax4 = axs[1, 1]
     scatter = ax4.scatter(latencies, [f * 100 for f in f1_scores], c=history_sizes, cmap='viridis', s=90, edgecolors='black', zorder=4)
-    cbar = plt.colorbar(scatter, ax=ax4)
+    cbar = fig.colorbar(scatter, ax=ax4)
     cbar.set_label('Window Size (W)')
 
     for i, w in enumerate(history_sizes):
@@ -203,16 +204,16 @@ def plot_results(results, scenario_title, output_filepath):
     ax4.grid(True, linestyle='--', alpha=0.5)
     ax4.legend(loc='lower left', frameon=True)
 
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    fig.tight_layout(rect=[0, 0.03, 1, 0.95])
     
     os.makedirs(os.path.dirname(os.path.abspath(output_filepath)), exist_ok=True)
-    plt.savefig(output_filepath, dpi=300)
+    fig.savefig(output_filepath, dpi=300)
     print(f"Plot saved successfully to: {output_filepath}")
     
     pdf_filepath = os.path.splitext(output_filepath)[0] + ".pdf"
-    plt.savefig(pdf_filepath)
+    fig.savefig(pdf_filepath)
     print(f"Vector PDF plot saved to:   {pdf_filepath}")
-    plt.close()
+    plt.close(fig)
 
 def filter_scenarios_by_variant(scenarios, variant):
     if not variant or str(variant).lower() in ('all', 'both'):
@@ -277,6 +278,8 @@ def main():
     parser.add_argument("--step", type=int, default=2, help="Step between window sizes (default: 2)")
     parser.add_argument("--window-sizes", nargs="+", default=None, help="Explicit list of window sizes (e.g. 4 6 8 10 15 20 25 30)")
     parser.add_argument("--from-json", default=None, help="Plot directly from an existing sweep_results.json or history_sweep.json")
+    parser.add_argument("--from-json-dir", default=None, metavar="DIR",
+                        help="Regenerate all plots from every window_sweep_*.json found in DIR (e.g. results/run_20260908_212755)")
     parser.add_argument("--output", default=None, help="Path to save output plot (.png)")
     parser.add_argument("--demo", action="store_true", help="Generate an illustrative benchmark plot without running runner")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of chunks to process")
@@ -306,6 +309,39 @@ def main():
         scenario_name = data[0].get('scenario', 'Sweep') if data else 'Sweep'
         output_file = args.output or os.path.join(plots_dir, f"window_sweep_{scenario_name}_{timestamp}.png")
         plot_results(data, scenario_name, output_file)
+        return
+
+    # -------------------------------------------------------------------------
+    # Mode 1b: Regenerate plots from all JSONs in a directory
+    # -------------------------------------------------------------------------
+    if args.from_json_dir:
+        json_dir = args.from_json_dir
+        if not os.path.isdir(json_dir):
+            print(f"Error: Directory not found: {json_dir}")
+            sys.exit(1)
+        json_files = sorted(glob.glob(os.path.join(json_dir, "window_sweep_*.json")))
+        if not json_files:
+            print(f"Error: No window_sweep_*.json files found in {json_dir}")
+            sys.exit(1)
+        print(f"Found {len(json_files)} JSON files in {json_dir}")
+
+        def _plot_from_json(json_path):
+            with open(json_path, 'r') as f:
+                data = json.load(f)
+            scenario_name = data[0].get('scenario', os.path.basename(json_path)) if data else 'Sweep'
+            output_file = os.path.join(plots_dir, f"window_sweep_{scenario_name}_{timestamp}.png")
+            plot_results(data, scenario_name, output_file)
+            return json_path
+
+        if args.jobs > 1 and len(json_files) > 1:
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=args.jobs) as executor:
+                list(executor.map(_plot_from_json, json_files))
+        else:
+            for jf in json_files:
+                _plot_from_json(jf)
+
+        print(f"\nAll plots saved to: {plots_dir}")
         return
 
     # -------------------------------------------------------------------------
