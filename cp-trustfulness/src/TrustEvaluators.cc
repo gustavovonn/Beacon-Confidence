@@ -7,6 +7,47 @@ namespace artery
 {
 
 // -----------------------------------------------------------------------------
+// Hard Physical Invariance Verification
+// -----------------------------------------------------------------------------
+PhysicalInvarianceResult BetaReputationTrustEvaluator::checkPhysicalInvariants(const TrustEvaluationContext& context) const
+{
+    PhysicalInvarianceResult res;
+
+    double dt_raw = context.currentState.time - context.pastState.time;
+    res.dt = (dt_raw <= 0.0) ? 0.1 : dt_raw;
+
+    double displacement = std::hypot(context.currentState.lon - context.pastState.lon,
+                                     context.currentState.lat - context.pastState.lat);
+    double impliedSpeed = displacement / res.dt;
+
+    const double SPEED_TOLERANCE_MPS = 4.0; // 4.0 m/s (~14.4 km/h), covers 99.5% of honest maneuvers
+    double speedDiscrepancy = 0.0;
+
+    // Only evaluate inter-frame physical invariance on valid consecutive transmissions:
+    // (1) dt_raw >= 0.2s: ignores duplicate receptions of the same broadcast packet across multiple receiver logs
+    // (2) dt_raw <= 2.0s: ignores large communication dropouts/gaps (matching F2MD MAX_TIME_DELTA)
+    if (dt_raw >= 0.2 && dt_raw <= 2.0) {
+        double avgReportedSpeed = 0.5 * (context.currentState.speed + context.pastState.speed);
+        speedDiscrepancy = std::abs(avgReportedSpeed - impliedSpeed);
+        bool speedFalsified = (speedDiscrepancy > SPEED_TOLERANCE_MPS);
+
+        // Frozen Position: node reports motion (>2.0 m/s) but stayed motionless (<0.3m) over a full dt >= 0.2s
+        bool frozenPosActive = (avgReportedSpeed > 2.0 && displacement < 0.3);
+
+        if (speedFalsified || frozenPosActive) {
+            res.failed = true;
+            res.excessRatio = (speedDiscrepancy > SPEED_TOLERANCE_MPS) ? 
+                ((speedDiscrepancy - SPEED_TOLERANCE_MPS) / SPEED_TOLERANCE_MPS) : 1.0;
+        }
+    }
+
+    // Sanitize speed used in dynamic threshold calculation so attacker cannot inflate bounds
+    res.safeSpeed = std::min(context.currentState.speed, impliedSpeed + SPEED_TOLERANCE_MPS);
+
+    return res;
+}
+
+// -----------------------------------------------------------------------------
 // Beta Reputation System Evaluator
 // -----------------------------------------------------------------------------
 double BetaReputationTrustEvaluator::evaluateTrust(const TrustEvaluationContext& context,
@@ -17,23 +58,27 @@ double BetaReputationTrustEvaluator::evaluateTrust(const TrustEvaluationContext&
     double alpha = context.lastTrustScore * totalObservations + 1.0;
     double beta = (1.0 - context.lastTrustScore) * totalObservations + 1.0;
 
-    // --- Context-Aware Dynamic Threshold ---
-    // Extract channel congestion (dt)
-    double dt = context.currentState.time - context.pastState.time;
-    if (dt <= 0.0) dt = 0.1;
-    
-    // Applying offline optimized weights:
-    // dynamicMaxPosDev = base (5.0) + speedWeight*(speed*dt) + yawWeight*(yawRate*speed)
-    double dynamicMaxPosDev = params.maxPosDev 
-                            + params.contextSpeedWeight * (context.currentState.speed * dt) 
-                            + params.contextYawWeight * (std::abs(context.pastState.yawRate) * context.currentState.speed);
+    // --- 1. Hard Physical Invariance Verification ---
+    PhysicalInvarianceResult physicsResult = checkPhysicalInvariants(context);
 
-    // --- Update Beta Coefficients ---
-    if (context.distError <= dynamicMaxPosDev) {
+    // --- 2. Context-Aware Dynamic Threshold ---
+    // Applying offline optimized weights with sanitized speed:
+    // dynamicMaxPosDev = base (5.0) + speedWeight*(safeSpeed*dt) + yawWeight*(yawRate*safeSpeed)
+    double dynamicMaxPosDev = params.maxPosDev 
+                            + params.contextSpeedWeight * (physicsResult.safeSpeed * physicsResult.dt) 
+                            + params.contextYawWeight * (std::abs(context.pastState.yawRate) * physicsResult.safeSpeed);
+
+    // --- 3. Update Beta Coefficients ---
+    if (physicsResult.failed) {
+        // Direct physical law violation: PENALIZE IMMEDIATELY.
+        // DO NOT allow Phase 2 Centroid Check to forgive this!
+        double betaPenalty = std::min(15.0, 5.0 + 5.0 * physicsResult.excessRatio);
+        beta += betaPenalty;
+    } else if (context.distError <= dynamicMaxPosDev) {
         alpha += 1.0;
     } else {
-        // Prediction failed. Is it just a sharp turn or a spatial spoof (teleportation)?
-        // Checkinkg Centroid Deviation
+        // Prediction failed, but telemetry speed matches physical displacement.
+        // Legitimate abrupt maneuver (e.g. sharp turn or emergency brake) vs teleportation.
         // Calculate the actual time span from the oldest history packet to now
         double actualTimeWindow = 0.1;
         if (!context.history.empty()) {
@@ -45,9 +90,8 @@ double BetaReputationTrustEvaluator::evaluateTrust(const TrustEvaluationContext&
         
         bool centroidCheckPassed = (!context.history.empty() && context.centroidDeviation <= expectedCentroidLimit);
         
-
         if (centroidCheckPassed) {
-            // Saved by Phase 2 Centroid Check!.
+            // Saved by Phase 2 Centroid Check!
             // The car is physically where it should be relative to its recent trajectory.
             alpha += 0.5; // Small reward, no beta penalty
         } else if (context.distError <= dynamicMaxPosDev * 1.35) {
