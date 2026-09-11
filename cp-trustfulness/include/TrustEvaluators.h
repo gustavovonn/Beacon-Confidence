@@ -24,7 +24,8 @@ public:
     std::string getName() const override { return "BetaReputation"; }
 
 private:
-    PhysicalInvarianceResult checkPhysicalInvariants(const TrustEvaluationContext& context) const;
+    PhysicalInvarianceResult checkPhysicalInvariants(const TrustEvaluationContext& context,
+                                                    const TrustEvaluationParams& params) const;
 };
 
 class TrustEvaluatorFactory

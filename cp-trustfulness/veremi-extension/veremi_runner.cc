@@ -1,5 +1,6 @@
 #include "../include/IDeadReckoningModel.h"
 #include "../include/TrustEvaluators.h"
+#include "../include/Constants.h"
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -317,7 +318,7 @@ private:
 
 public:
     TrustEvaluationEngine(const std::string& drModelName, const std::string& trustModelName, 
-                          double maxPosDev = 4.3506, double contextSpeedWeight = 5.2264, double contextYawWeight = 0.6536,
+                          const TrustEvaluationParams& evalParams,
                           bool silentMode = false) {
         silent = silentMode;
         if (drModelName == "HistoryAwareCTRA") {
@@ -327,11 +328,7 @@ public:
         }
         
         trustEvaluator = TrustEvaluatorFactory::create(trustModelName);
-
-        // values from offline training or overridden by CLI
-        params.maxPosDev = maxPosDev;
-        params.contextSpeedWeight = contextSpeedWeight;
-        params.contextYawWeight = contextYawWeight;
+        params = evalParams;
 
         if (!silent) {
 #ifndef DISABLE_OUTPUT
@@ -409,10 +406,13 @@ int main(int argc, char* argv[]) {
     std::string drModelName = "HistoryAwareCTRA";
     std::string trustModelName = "BetaReputation";
     std::string dirPath = "";
-    double maxPosDev = 4.3506;
-    double speedWeight = 5.2264;
-    double yawWeight = 0.6536;
     bool profileMode = false;
+
+    TrustEvaluationParams params;
+    // Offline optimized baseline weights:
+    params.maxPosDev = 4.3506;
+    params.contextSpeedWeight = 5.2264;
+    params.contextYawWeight = 0.6536;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -423,11 +423,27 @@ int main(int argc, char* argv[]) {
         } else if (arg == "--dir" && i + 1 < argc) {
             dirPath = argv[++i];
         } else if (arg == "--maxPosDev" && i + 1 < argc) {
-            maxPosDev = std::stod(argv[++i]);
+            params.maxPosDev = std::stod(argv[++i]);
         } else if (arg == "--speedWeight" && i + 1 < argc) {
-            speedWeight = std::stod(argv[++i]);
+            params.contextSpeedWeight = std::stod(argv[++i]);
         } else if (arg == "--yawWeight" && i + 1 < argc) {
-            yawWeight = std::stod(argv[++i]);
+            params.contextYawWeight = std::stod(argv[++i]);
+        } else if (arg == "--priorWeight" && i + 1 < argc) {
+            params.priorWeight = std::stod(argv[++i]);
+        } else if (arg == "--speedTolerance" && i + 1 < argc) {
+            params.speedToleranceMps = std::stod(argv[++i]);
+        } else if (arg == "--alphaReward" && i + 1 < argc) {
+            params.alphaReward = std::stod(argv[++i]);
+        } else if (arg == "--alphaManeuver" && i + 1 < argc) {
+            params.alphaManeuverReward = std::stod(argv[++i]);
+        } else if (arg == "--softMarginRatio" && i + 1 < argc) {
+            params.softMarginRatio = std::stod(argv[++i]);
+        } else if (arg == "--penaltySoftBase" && i + 1 < argc) {
+            params.penaltySoftBase = std::stod(argv[++i]);
+        } else if (arg == "--penaltySevereBase" && i + 1 < argc) {
+            params.penaltySevereBase = std::stod(argv[++i]);
+        } else if (arg == "--maxBetaPenalty" && i + 1 < argc) {
+            params.maxBetaPenalty = std::stod(argv[++i]);
         } else if (arg == "--profile") {
             profileMode = true;
         }
@@ -442,7 +458,7 @@ int main(int argc, char* argv[]) {
     auto messages = ParquetMessageExtractor::extractMessages(dirPath);
     
     // 2. Initialize engine
-    TrustEvaluationEngine engine(drModelName, trustModelName, maxPosDev, speedWeight, yawWeight, profileMode);
+    TrustEvaluationEngine engine(drModelName, trustModelName, params, profileMode);
 
     // 3. Process stream
     if (profileMode) {
