@@ -100,120 +100,172 @@ def generate_demo_data(window_sizes, scenario_name="Demo_Scenario"):
         })
     return results
 
-def plot_results(results, scenario_title, output_filepath):
-    """
-    Creates a 4-panel publication-grade figure:
-    1. F1 Score, Recall, and Precision vs Window Size
-    2. False Positive Rate (FPR) vs Window Size
-    3. Latency (us) & Throughput vs Window Size
-    4. Pareto Curve: Latency vs F1 Score (Sweet spot analysis)
-    """
-    history_sizes = [r['history_size'] for r in results]
-    f1_scores = [r['f1_score'] for r in results]
-    recalls = [r['recall'] for r in results]
-    precisions = [r['precision'] for r in results]
-    fprs = [r['fpr'] for r in results]
-    latencies = [r['avg_latency_us'] for r in results]
-    throughputs = [r['throughput_msg_s'] for r in results]
 
-    best_f1_idx = int(np.argmax(f1_scores))
-    best_w = history_sizes[best_f1_idx]
+def _build_panel_detection(ax, history_sizes, f1_scores, recalls, precisions, best_w, best_f1_idx, show_title=True):
+    ax.plot(history_sizes, [f * 100 for f in f1_scores], marker='o', color='#1f77b4', linewidth=2.2, label='F1 Score (%)')
+    ax.plot(history_sizes, recalls, marker='s', color='#2ca02c', linewidth=2.0, linestyle='--', label='Recall (Detection Rate %)')
+    ax.plot(history_sizes, precisions, marker='^', color='#ff7f0e', linewidth=2.0, linestyle=':', label='Precision (%)')
+    ax.axvline(best_w, color='#d62728', linestyle='-.', alpha=0.7, label=f'Optimal F1 (W={best_w})')
+    ax.scatter([best_w], [f1_scores[best_f1_idx] * 100], color='#d62728', s=100, zorder=5)
+    if show_title:
+        ax.set_title("Detection Performance vs. Window Size", fontweight='bold')
+    ax.set_xlabel("Tracking History Window Size (W)")
+    ax.set_ylabel("Score (%)")
+    ax.grid(True, linestyle='--', alpha=0.5)
+    ax.legend(loc='lower right', frameon=True)
 
-    with plt.rc_context({
-        'font.size': 11,
-        'axes.labelsize': 12,
-        'axes.titlesize': 13,
-        'xtick.labelsize': 10,
-        'ytick.labelsize': 10,
-        'legend.fontsize': 10,
-        'figure.titlesize': 15
-    }):
-        fig, axs = plt.subplots(2, 2, figsize=(14, 10))
 
-    fig.suptitle(f"VeReMi Tracking History Window Analysis: {scenario_title}", fontweight='bold', y=0.98)
+def _build_panel_fpr(ax, history_sizes, fprs, best_w, show_title=True):
+    ax.plot(history_sizes, fprs, marker='d', color='#d62728', linewidth=2.2, label='False Positive Rate (FPR %)')
+    ax.axvline(best_w, color='#1f77b4', linestyle='-.', alpha=0.7, label=f'Optimal F1 (W={best_w})')
+    if show_title:
+        ax.set_title("False Positive Rate vs. Window Size", fontweight='bold')
+    ax.set_xlabel("Tracking History Window Size (W)")
+    ax.set_ylabel("FPR (%)")
+    ax.grid(True, linestyle='--', alpha=0.5)
+    ax.legend(loc='upper right', frameon=True)
 
-    # -------------------------------------------------------------------------
-    # Panel 1: Detection Performance (F1, Recall, Precision)
-    # -------------------------------------------------------------------------
-    ax1 = axs[0, 0]
-    ax1.plot(history_sizes, [f * 100 for f in f1_scores], marker='o', color='#1f77b4', linewidth=2.2, label='F1 Score (%)')
-    ax1.plot(history_sizes, recalls, marker='s', color='#2ca02c', linewidth=2.0, linestyle='--', label='Recall (Detection Rate %)')
-    ax1.plot(history_sizes, precisions, marker='^', color='#ff7f0e', linewidth=2.0, linestyle=':', label='Precision (%)')
-    
-    # Highlight optimal window
-    ax1.axvline(best_w, color='#d62728', linestyle='-.', alpha=0.7, label=f'Optimal F1 (W={best_w})')
-    ax1.scatter([best_w], [f1_scores[best_f1_idx] * 100], color='#d62728', s=100, zorder=5)
 
-    ax1.set_title("Detection Performance vs. Window Size", fontweight='bold')
-    ax1.set_xlabel("Tracking History Window Size (W)")
-    ax1.set_ylabel("Score (%)")
-    ax1.grid(True, linestyle='--', alpha=0.5)
-    ax1.legend(loc='lower right', frameon=True)
-
-    # -------------------------------------------------------------------------
-    # Panel 2: False Positive Rate (FPR)
-    # -------------------------------------------------------------------------
-    ax2 = axs[0, 1]
-    ax2.plot(history_sizes, fprs, marker='d', color='#d62728', linewidth=2.2, label='False Positive Rate (FPR %)')
-    ax2.axvline(best_w, color='#1f77b4', linestyle='-.', alpha=0.7, label=f'Optimal F1 (W={best_w})')
-    
-    ax2.set_title("False Positive Rate vs. Window Size", fontweight='bold')
-    ax2.set_xlabel("Tracking History Window Size (W)")
-    ax2.set_ylabel("FPR (%)")
-    ax2.grid(True, linestyle='--', alpha=0.5)
-    ax2.legend(loc='upper right', frameon=True)
-
-    # -------------------------------------------------------------------------
-    # Panel 3: Computational Latency & Throughput
-    # -------------------------------------------------------------------------
-    ax3 = axs[1, 0]
-    ax3_twin = ax3.twinx()
-    
-    line1 = ax3.plot(history_sizes, latencies, marker='o', color='#9467bd', linewidth=2.2, label='Avg Latency (µs/msg)')
-    line2 = ax3_twin.plot(history_sizes, throughputs, marker='x', color='#8c564b', linewidth=2.0, linestyle='--', label='Throughput (msg/s)')
-
-    ax3.set_title("Computational Cost vs. Window Size", fontweight='bold')
-    ax3.set_xlabel("Tracking History Window Size (W)")
-    ax3.set_ylabel("Avg Latency per Message (µs)", color='#9467bd')
-    ax3_twin.set_ylabel("Throughput (messages / sec)", color='#8c564b')
-    ax3.grid(True, linestyle='--', alpha=0.5)
-
-    # Combined legend
+def _build_panel_latency(ax, history_sizes, latencies, throughputs, show_title=True):
+    ax_twin = ax.twinx()
+    line1 = ax.plot(history_sizes, latencies, marker='o', color='#9467bd', linewidth=2.2, label='Avg Latency (µs/msg)')
+    line2 = ax_twin.plot(history_sizes, throughputs, marker='x', color='#8c564b', linewidth=2.0, linestyle='--', label='Throughput (msg/s)')
+    if show_title:
+        ax.set_title("Computational Cost vs. Window Size", fontweight='bold')
+    ax.set_xlabel("Tracking History Window Size (W)")
+    ax.set_ylabel("Avg Latency per Message (µs)", color='#9467bd')
+    ax_twin.set_ylabel("Throughput (messages / sec)", color='#8c564b')
+    ax.grid(True, linestyle='--', alpha=0.5)
     lines = line1 + line2
     labels = [l.get_label() for l in lines]
-    ax3.legend(lines, labels, loc='center right', frameon=True)
+    ax.legend(lines, labels, loc='center right', frameon=True)
+    return ax_twin   # caller may need it for tight_layout
 
-    # -------------------------------------------------------------------------
-    # Panel 4: Pareto Efficiency Frontier (Latency vs F1 Score)
-    # -------------------------------------------------------------------------
-    ax4 = axs[1, 1]
-    scatter = ax4.scatter(latencies, [f * 100 for f in f1_scores], c=history_sizes, cmap='viridis', s=90, edgecolors='black', zorder=4)
-    cbar = fig.colorbar(scatter, ax=ax4)
+
+def _build_panel_pareto(ax, fig, history_sizes, latencies, f1_scores, best_w, best_f1_idx, show_title=True):
+    scatter = ax.scatter(latencies, [f * 100 for f in f1_scores],
+                         c=history_sizes, cmap='viridis', s=90, edgecolors='black', zorder=4)
+    cbar = fig.colorbar(scatter, ax=ax)
     cbar.set_label('Window Size (W)')
-
     for i, w in enumerate(history_sizes):
-        ax4.annotate(f"W={w}", (latencies[i], f1_scores[i] * 100),
-                     textcoords="offset points", xytext=(6, 4), fontsize=9)
+        ax.annotate(f"W={w}", (latencies[i], f1_scores[i] * 100),
+                    textcoords="offset points", xytext=(6, 4), fontsize=9)
+    ax.plot(latencies, [f * 100 for f in f1_scores], color='gray', linestyle=':', alpha=0.6, zorder=2)
+    ax.scatter([latencies[best_f1_idx]], [f1_scores[best_f1_idx] * 100],
+               color='#d62728', s=130, marker='*', zorder=5, label=f'Best F1 (W={best_w})')
+    if show_title:
+        ax.set_title("Pareto Frontier: Latency vs. F1 Score", fontweight='bold')
+    ax.set_xlabel("Avg Latency per Message (µs) [Lower is better]")
+    ax.set_ylabel("F1 Score (%) [Higher is better]")
+    ax.grid(True, linestyle='--', alpha=0.5)
+    ax.legend(loc='lower left', frameon=True)
 
-    ax4.plot(latencies, [f * 100 for f in f1_scores], color='gray', linestyle=':', alpha=0.6, zorder=2)
-    ax4.scatter([latencies[best_f1_idx]], [f1_scores[best_f1_idx] * 100], color='#d62728', s=130, marker='*', zorder=5, label=f'Best F1 (W={best_w})')
 
-    ax4.set_title("Pareto Frontier: Latency vs. F1 Score", fontweight='bold')
-    ax4.set_xlabel("Avg Latency per Message (µs) [Lower is better]")
-    ax4.set_ylabel("F1 Score (%) [Higher is better]")
-    ax4.grid(True, linestyle='--', alpha=0.5)
-    ax4.legend(loc='lower left', frameon=True)
+RC = {
+    'font.size': 11,
+    'axes.labelsize': 12,
+    'axes.titlesize': 13,
+    'xtick.labelsize': 10,
+    'ytick.labelsize': 10,
+    'legend.fontsize': 10,
+    'figure.titlesize': 15,
+}
+
+INDIVIDUAL_PANELS = [
+    ("detection",  "Detection Performance vs. Tracking History Window Size"),
+    ("fpr",        "False Positive Rate vs. Window Size"),
+    ("latency",    "Computational Cost vs. Window Size"),
+    ("pareto",     "Pareto Frontier: Latency vs. F1 Score"),
+]
+
+
+def plot_results(results, scenario_title, output_filepath):
+    """
+    Creates a 4-panel publication-grade figure and also saves each panel
+    as an individual PNG/PDF alongside the combined figure.
+
+    Individual files are placed next to output_filepath with suffixes:
+        _panel_detection.png / .pdf
+        _panel_fpr.png / .pdf
+        _panel_latency.png / .pdf
+        _panel_pareto.png / .pdf
+    """
+    history_sizes = [r['history_size'] for r in results]
+    f1_scores     = [r['f1_score']     for r in results]
+    recalls       = [r['recall']        for r in results]
+    precisions    = [r['precision']     for r in results]
+    fprs          = [r['fpr']           for r in results]
+    latencies     = [r['avg_latency_us']     for r in results]
+    throughputs   = [r['throughput_msg_s']   for r in results]
+
+    best_f1_idx = int(np.argmax(f1_scores))
+    best_w      = history_sizes[best_f1_idx]
+
+    out_dir  = os.path.dirname(os.path.abspath(output_filepath))
+    out_stem = os.path.splitext(os.path.basename(output_filepath))[0]
+    os.makedirs(out_dir, exist_ok=True)
+
+    # ------------------------------------------------------------------
+    # 1.  Combined 2×2 figure (original behaviour, inner titles shown)
+    # ------------------------------------------------------------------
+    with plt.rc_context(RC):
+        fig, axs = plt.subplots(2, 2, figsize=(14, 10))
+
+    fig.suptitle(f"VeReMi Tracking History Window Analysis: {scenario_title}",
+                 fontweight='bold', y=0.98)
+
+    _build_panel_detection(axs[0, 0], history_sizes, f1_scores, recalls, precisions, best_w, best_f1_idx, show_title=True)
+    _build_panel_fpr      (axs[0, 1], history_sizes, fprs, best_w, show_title=True)
+    _build_panel_latency  (axs[1, 0], history_sizes, latencies, throughputs, show_title=True)
+    _build_panel_pareto   (axs[1, 1], fig, history_sizes, latencies, f1_scores, best_w, best_f1_idx, show_title=True)
 
     fig.tight_layout(rect=[0, 0.03, 1, 0.95])
-    
-    os.makedirs(os.path.dirname(os.path.abspath(output_filepath)), exist_ok=True)
     fig.savefig(output_filepath, dpi=300)
     print(f"Plot saved successfully to: {output_filepath}")
-    
+
     pdf_filepath = os.path.splitext(output_filepath)[0] + ".pdf"
     fig.savefig(pdf_filepath)
     print(f"Vector PDF plot saved to:   {pdf_filepath}")
     plt.close(fig)
+
+    # ------------------------------------------------------------------
+    # 2.  Individual panel figures — single title only (suptitle), no
+    #     inner ax.set_title so there is no duplicate heading.
+    # ------------------------------------------------------------------
+    panel_builders = {
+        "detection": lambda ax, fig: _build_panel_detection(
+            ax, history_sizes, f1_scores, recalls, precisions, best_w, best_f1_idx, show_title=False),
+        "fpr": lambda ax, fig: _build_panel_fpr(
+            ax, history_sizes, fprs, best_w, show_title=False),
+        "latency": lambda ax, fig: _build_panel_latency(
+            ax, history_sizes, latencies, throughputs, show_title=False),
+        "pareto": lambda ax, fig: _build_panel_pareto(
+            ax, fig, history_sizes, latencies, f1_scores, best_w, best_f1_idx, show_title=False),
+    }
+
+    panel_suptitles = {
+        "detection": f"{scenario_title} \u2014 Detection Performance vs. Tracking History Window Size",
+        "fpr":       f"{scenario_title} \u2014 False Positive Rate vs. Window Size",
+        "latency":   f"{scenario_title} \u2014 Computational Cost vs. Window Size",
+        "pareto":    f"{scenario_title} \u2014 Pareto Frontier: Latency vs. F1 Score",
+    }
+
+    for key, suptitle_text in panel_suptitles.items():
+        with plt.rc_context(RC):
+            fig_ind, ax_ind = plt.subplots(figsize=(7, 5))
+
+        fig_ind.suptitle(suptitle_text, fontweight='bold')
+        panel_builders[key](ax_ind, fig_ind)
+        fig_ind.tight_layout()
+
+        png_path = os.path.join(out_dir, f"{out_stem}_panel_{key}.png")
+        pdf_path = os.path.join(out_dir, f"{out_stem}_panel_{key}.pdf")
+        fig_ind.savefig(png_path, dpi=300, bbox_inches='tight')
+        fig_ind.savefig(pdf_path,           bbox_inches='tight')
+        print(f"  Individual panel saved: {png_path}")
+        print(f"  Individual panel saved: {pdf_path}")
+        plt.close(fig_ind)
+
 
 def filter_scenarios_by_variant(scenarios, variant):
     if not variant or str(variant).lower() in ('all', 'both'):
