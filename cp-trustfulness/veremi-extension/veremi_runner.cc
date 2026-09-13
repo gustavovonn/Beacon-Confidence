@@ -186,7 +186,7 @@ private:
 public:
     TrustEvaluationEngine(const std::string& drModelName, const std::string& trustModelName, 
                           const TrustEvaluationParams& evalParams,
-                          bool silentMode = false, size_t histSize = 5) 
+                          bool silentMode = false, size_t histSize = ConstantsApp::DEFAULT_HISTORY_WINDOW) 
         : historySize(histSize) {
         silent = silentMode;
         drModel = DeadReckoningModelFactory::create(drModelName, "cartesian");
@@ -285,7 +285,7 @@ int main(int argc, char* argv[]) {
     std::string trustModelName = "BetaReputation";
     std::string dirPath = "";
     bool profileMode = false;
-    size_t historySize = 5;
+    size_t historySize = ConstantsApp::DEFAULT_HISTORY_WINDOW;
 
     TrustEvaluationParams params;
     // Offline optimized baseline weights:

@@ -13,7 +13,7 @@ simple TrustService like ItsG5Service
 
         // Algorithm strategy selectors
         string drAlgorithm = default("HistoryAwareCTRA");
-        int historySize = default(5);                // Window size for history-aware models
+        int historySize = default(4);                // Window size for history-aware models
         string trustAlgorithm = default("BetaReputation");
 
         // Threshold parameters

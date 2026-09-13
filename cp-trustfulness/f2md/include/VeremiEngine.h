@@ -176,6 +176,7 @@ private:
     std::unique_ptr<ITrustEvaluator> trustEvaluator;
     TrustEvaluationParams params;
     bool silent;
+    size_t historySize = ConstantsApp::DEFAULT_HISTORY_WINDOW;
     
     std::map<long, std::deque<KinematicState>> m_cache;
     std::map<long, double> m_scores;
@@ -183,8 +184,9 @@ private:
 public:
     TrustEvaluationEngine(const std::string& drModelName, const std::string& trustModelName, 
                           double maxPosDev = 4.3506, double contextSpeedWeight = 5.2264, double contextYawWeight = 0.6536,
-                          bool silentMode = false) {
+                          bool silentMode = false, size_t histSize = ConstantsApp::DEFAULT_HISTORY_WINDOW) {
         silent = silentMode;
+        historySize = histSize;
         drModel = DeadReckoningModelFactory::create(drModelName, "cartesian");
         
         trustEvaluator = TrustEvaluatorFactory::create(trustModelName);
@@ -235,7 +237,7 @@ public:
         auto t1 = std::chrono::high_resolution_clock::now();
 
         history.push_back(currentState);
-        if (history.size() > 5) history.pop_front();
+        while (history.size() > historySize) history.pop_front();
 
         if (stage1_us) *stage1_us = std::chrono::duration<double, std::micro>(t1 - t0).count();
         return true;
@@ -341,7 +343,7 @@ public:
         }
 
         history.push_back(currentState);
-        if (history.size() > 5) {
+        while (history.size() > historySize) {
             history.pop_front();
         }
 

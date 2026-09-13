@@ -57,7 +57,7 @@ def extract_attackers_from_filenames(d):
                 attackers.add(node_id)
     return attackers
 
-def process_scenario(dirs, runner_path, history_size=5, dr_model="HistoryAwareCTRA", trust_model="BetaReputation", threshold=0.5):
+def process_scenario(dirs, runner_path, history_size=4, dr_model="HistoryAwareCTRA", trust_model="BetaReputation", threshold=0.5):
     all_metrics = []
     
     for d in dirs:
@@ -204,7 +204,7 @@ def main():
     parser.add_argument("--scenario", required=False, help="e.g. ConstPos_0709 (Required unless --sweep is used)")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of chunks to process")
     parser.add_argument("--sweep", action="store_true", help="Run across all scenarios")
-    parser.add_argument("--history-size", type=int, default=5, help="History size for veremi_runner (default: 5)")
+    parser.add_argument("--history-size", type=int, default=4, help="History size for veremi_runner (default: 4)")
     parser.add_argument("--history-sweep", nargs="+", default=None, help="List of history sizes to sweep and compare (e.g. --history-sweep 5 10 20 or 5,10,20)")
     parser.add_argument("--dr", default="HistoryAwareCTRA", help="Dead reckoning model (default: HistoryAwareCTRA)")
     parser.add_argument("--trust", default="BetaReputation", help="Trust evaluator model (default: BetaReputation)")
