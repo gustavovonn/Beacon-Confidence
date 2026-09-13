@@ -8,50 +8,6 @@ namespace artery
 {
 
 // -----------------------------------------------------------------------------
-// Hard Physical Invariance Verification
-// -----------------------------------------------------------------------------
-PhysicalInvarianceResult BetaReputationTrustEvaluator::checkPhysicalInvariants(const TrustEvaluationContext& context,
-                                                                              const TrustEvaluationParams& params) const
-{
-    PhysicalInvarianceResult res;
-
-    double dt_raw = context.currentState.time - context.pastState.time;
-    res.dt = (dt_raw <= 0.0) ? 0.1 : dt_raw;
-
-    double displacement = std::hypot(context.currentState.lon - context.pastState.lon,
-                                     context.currentState.lat - context.pastState.lat);
-    double impliedSpeed = displacement / res.dt;
-
-    double speedTolerance = (params.speedToleranceMps > 0.0) ? params.speedToleranceMps 
-                                                             : ConstantsPhysics::DEFAULT_SPEED_TOLERANCE_MPS;
-    double speedDiscrepancy = 0.0;
-
-    // Only evaluate inter-frame physical invariance on valid consecutive transmissions:
-    // (1) dt_raw >= MIN_INTER_FRAME_TIME: rejects duplicate receptions across multiple receiver logs (ETSI EN 302 637-2)
-    // (2) dt_raw <= MAX_INTER_FRAME_TIME: ignores large communication gaps where kinematics are discontinuous (F2MD MAX_TIME_DELTA)
-    if (dt_raw >= ConstantsPhysics::MIN_INTER_FRAME_TIME && dt_raw <= ConstantsPhysics::MAX_INTER_FRAME_TIME) {
-        double avgReportedSpeed = 0.5 * (context.currentState.speed + context.pastState.speed);
-        speedDiscrepancy = std::abs(avgReportedSpeed - impliedSpeed);
-        bool speedFalsified = (speedDiscrepancy > speedTolerance);
-
-        // Frozen Position: node reports motion (> FROZEN_SPEED_THRESHOLD) but stayed motionless (< FROZEN_DISPLACEMENT_MIN)
-        bool frozenPosActive = (avgReportedSpeed > ConstantsPhysics::FROZEN_SPEED_THRESHOLD && 
-                                displacement < ConstantsPhysics::FROZEN_DISPLACEMENT_MIN);
-
-        if (speedFalsified || frozenPosActive) {
-            res.failed = true;
-            res.excessRatio = (speedDiscrepancy > speedTolerance) ? 
-                ((speedDiscrepancy - speedTolerance) / speedTolerance) : 1.0;
-        }
-    }
-
-    // Sanitize speed used in dynamic threshold calculation so attacker cannot inflate bounds
-    res.safeSpeed = std::min(context.currentState.speed, impliedSpeed + speedTolerance);
-
-    return res;
-}
-
-// -----------------------------------------------------------------------------
 // Beta Reputation System Evaluator
 // -----------------------------------------------------------------------------
 double BetaReputationTrustEvaluator::evaluateTrust(const TrustEvaluationContext& context,
@@ -64,8 +20,8 @@ double BetaReputationTrustEvaluator::evaluateTrust(const TrustEvaluationContext&
     double alpha = context.lastTrustScore * priorWeight + 1.0;
     double beta = (1.0 - context.lastTrustScore) * priorWeight + 1.0;
 
-    // --- 1. Hard Physical Invariance Verification ---
-    PhysicalInvarianceResult physicsResult = checkPhysicalInvariants(context, params);
+    // --- 1. Hard Physical Invariance Verification (Pre-computed by caller) ---
+    const PhysicalInvarianceResult& physicsResult = context.physicsResult;
 
     // --- 2. Context-Aware Dynamic Threshold ---
     // Applying offline optimized weights with sanitized speed:

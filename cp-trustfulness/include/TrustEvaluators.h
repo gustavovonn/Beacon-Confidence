@@ -8,13 +8,6 @@
 namespace artery
 {
 
-struct PhysicalInvarianceResult {
-    bool failed = false;
-    double excessRatio = 0.0;
-    double safeSpeed = 0.0;
-    double dt = 0.1;
-};
-
 class BetaReputationTrustEvaluator : public ITrustEvaluator
 {
 public:
@@ -22,10 +15,6 @@ public:
                          const TrustEvaluationParams& params) override;
 
     std::string getName() const override { return "BetaReputation"; }
-
-private:
-    PhysicalInvarianceResult checkPhysicalInvariants(const TrustEvaluationContext& context,
-                                                    const TrustEvaluationParams& params) const;
 };
 
 class TrustEvaluatorFactory

@@ -1,4 +1,6 @@
 #include "../include/TrustService.h"
+#include "../../include/CoordinatePolicies.h"
+#include "../../include/PhysicalInvariance.h"
 #include "artery/application/Middleware.h"
 #include "artery/traci/VehicleController.h"
 #include "artery/utility/IdentityRegistry.h"
@@ -124,33 +126,6 @@ KinematicState* etsi_cam_unwrap(const auto& asn1_cam)
     kinematicState->time = omnetpp::simTime().dbl();
 
     return kinematicState;
-}
-
-double calculateCentroidDeviation(const std::deque<KinematicState>& state_history,
-                                  double receivedLat, double receivedLon)
-{
-    if (state_history.empty()) return 0.0;
-
-    double sumLat = 0.0;
-    double sumLon = 0.0;
-
-    for (const auto& snap : state_history) {
-        sumLat += snap.lat;
-        sumLon += snap.lon;
-    }
-
-    double cLat = sumLat / state_history.size();
-    double cLon = sumLon / state_history.size();
-
-    double latRad1 = cLat * M_PI / 180.0;
-    double latRad2 = receivedLat * M_PI / 180.0;
-    double lonRad1 = cLon * M_PI / 180.0;
-    double lonRad2 = receivedLon * M_PI / 180.0;
-    double x = (lonRad2 - lonRad1) * std::cos((latRad1 + latRad2) / 2.0);
-    double y = (latRad2 - latRad1);
-
-    return (6371000.0 * std::sqrt(x * x + y * y));
-}
 
 void TrustService::receiveSignal(cComponent* source, simsignal_t signal, cObject* obj, cObject* details)
 {
@@ -210,10 +185,14 @@ void TrustService::receiveSignal(cComponent* source, simsignal_t signal, cObject
     }
 
     // 4. Centroid Deviation
-    double centroidDeviation = calculateCentroidDeviation(history, 
+    double centroidDeviation = Wgs84CoordinatePolicy::centroidDeviation(history, 
         receivedKinematicState->lat, receivedKinematicState->lon);
 
-    // 5. Evaluate Trust
+    // 5. Hard Physical Invariance Verification
+    PhysicalInvarianceResult physicsResult = checkPhysicalInvariants<Wgs84CoordinatePolicy>(
+        pastKinematicState, *receivedKinematicState, m_params.speedToleranceMps);
+
+    // 6. Evaluate Trust
     double lastScore = m_scores[stationId];
     TrustEvaluationContext ctx {
         history, 
@@ -221,7 +200,8 @@ void TrustService::receiveSignal(cComponent* source, simsignal_t signal, cObject
         *receivedKinematicState, 
         lastScore, 
         distError, 
-        centroidDeviation
+        centroidDeviation,
+        physicsResult
     };
     
     if (m_trustEvaluator) {

@@ -3,6 +3,7 @@
 
 #include "IDeadReckoningModel.h"
 #include "Constants.h"
+#include "PhysicalInvariance.h"
 #include <string>
 #include <deque>
 
@@ -42,6 +43,7 @@ struct TrustEvaluationContext {
     double lastTrustScore;
     double distError;
     double centroidDeviation;
+    PhysicalInvarianceResult physicsResult = {};
 };
 
 class ITrustEvaluator

@@ -1,5 +1,8 @@
 #pragma once
 #include "../include/IDeadReckoningModel.h"
+#include "../include/DeadReckoningModels.h"
+#include "../include/CoordinatePolicies.h"
+#include "../include/PhysicalInvariance.h"
 #include "../include/TrustEvaluators.h"
 #include <iostream>
 #include <sstream>
@@ -13,156 +16,6 @@
 #include <chrono>
 
 using namespace artery;
-
-// -----------------------------------------------------------------------------
-// Cartesian CTRA Integration
-// -----------------------------------------------------------------------------
-static void cartesianCtraIntegrate(double startX, double startY, double startSpeed, double startHeading, 
-                                   double a, double w, double dt, PredictedState& nextState)
-{
-    const double headingRad = startHeading * M_PI / 180.0;
-    
-    if (std::abs(w) < 1e-4)
-    {
-        const double predictedSpeed = startSpeed + a * dt;
-        double dist = startSpeed * dt + 0.5 * a * dt * dt;
-        if (predictedSpeed <= 0.0 || dist < 0.0) {
-            dist = 0.0;
-            nextState.speed = 0.0;
-        } else {
-            nextState.speed = predictedSpeed;
-        }
-        
-        const double dy = dist * std::cos(headingRad);
-        const double dx = dist * std::sin(headingRad);
-        
-        nextState.lat = startY + dy; // Store Y in lat
-        nextState.lon = startX + dx; // Store X in lon
-        nextState.heading = startHeading;
-        return;
-    }
-    
-    const double v_dt = startSpeed + a * dt;
-    const double newHeadingRad = headingRad + w * dt;
-    
-    const double inv_w = 1.0 / w;
-    const double a_over_w2 = a / (w * w);
-    
-    const double sinH0 = std::sin(headingRad);
-    const double cosH0 = std::cos(headingRad);
-    const double sinH1 = std::sin(newHeadingRad);
-    const double cosH1 = std::cos(newHeadingRad);
-    
-    const double dx = inv_w * (v_dt * sinH1 - startSpeed * sinH0) + a_over_w2 * (cosH1 - cosH0);
-    const double dy = inv_w * (-v_dt * cosH1 + startSpeed * cosH0) + a_over_w2 * (sinH1 - sinH0);
-    
-    nextState.lat = startY + dy;
-    nextState.lon = startX + dx;
-    nextState.speed = std::max(0.0, v_dt);
-    
-    double headingDeg = std::fmod(newHeadingRad * 180.0 / M_PI, 360.0);
-    if (headingDeg < 0.0) headingDeg += 360.0;
-    nextState.heading = headingDeg;
-}
-
-// -----------------------------------------------------------------------------
-// Cartesian Dead Reckoning Models
-// -----------------------------------------------------------------------------
-class CartesianCtraDeadReckoningModel : public IDeadReckoningModel
-{
-public:
-    void predict(const std::deque<KinematicState>& history, const KinematicState& lastState, PredictedState& nextState, double dt) override {
-        if (dt <= 0.0) return;
-        cartesianCtraIntegrate(lastState.lon, lastState.lat, lastState.speed, lastState.heading, 
-                               lastState.accel, lastState.yawRate, dt, nextState);
-    }
-    double computeError(const PredictedState& expected, const KinematicState& actual) override {
-        double dx = expected.lon - actual.lon;
-        double dy = expected.lat - actual.lat;
-        return std::sqrt(dx*dx + dy*dy);
-    }
-    std::string getName() const override { return "CartesianCTRA"; }
-};
-
-class CartesianHistoryAwareCtraModel : public IDeadReckoningModel
-{
-private:
-    double unwrapHeading(double currentHeading, double previousHeading) {
-        double diff = currentHeading - previousHeading;
-        diff -= 360.0 * std::floor((diff + 180.0) / 360.0);
-        return previousHeading + diff;
-    }
-public:
-    void predict(const std::deque<KinematicState>& history, const KinematicState& lastState, PredictedState& nextState, double dt) override {
-        if (dt <= 0.0) return;
-        if (history.size() < 3) {
-            CartesianCtraDeadReckoningModel fallback;
-            fallback.predict(history, lastState, nextState, dt);
-            return;
-        }
-
-        double sum_t = 0.0, sum_v = 0.0, sum_h = 0.0;
-        double sum_t2 = 0.0, sum_tv = 0.0, sum_th = 0.0;
-        const double t0 = history.front().time;
-        double prevHeading = history.front().heading;
-        const size_t n = history.size();
-
-        for (size_t i = 0; i < n; ++i) {
-            const double t = history[i].time - t0;
-            const double v = history[i].speed;
-            double h = history[i].heading;
-            if (i > 0) {
-                h = unwrapHeading(h, prevHeading);
-                prevHeading = h;
-            }
-            sum_t  += t;
-            sum_v  += v;
-            sum_h  += h;
-            sum_t2 += t * t;
-            sum_tv += t * v;
-            sum_th += t * h;
-        }
-
-        const double denom = static_cast<double>(n) * sum_t2 - sum_t * sum_t;
-        double a, w;
-        if (std::abs(denom) < 1e-6) {
-            a = lastState.accel;
-            w = lastState.yawRate;
-        } else {
-            a = (static_cast<double>(n) * sum_tv - sum_t * sum_v) / denom;
-            const double w_deg = (static_cast<double>(n) * sum_th - sum_t * sum_h) / denom;
-            w = w_deg * M_PI / 180.0;
-        }
-
-        cartesianCtraIntegrate(lastState.lon, lastState.lat, lastState.speed, lastState.heading, 
-                               a, w, dt, nextState);
-    }
-    double computeError(const PredictedState& expected, const KinematicState& actual) override {
-        double dx = expected.lon - actual.lon;
-        double dy = expected.lat - actual.lat;
-        return std::sqrt(dx*dx + dy*dy);
-    }
-    std::string getName() const override { return "CartesianHistoryAwareCTRA"; }
-};
-
-// -----------------------------------------------------------------------------
-// Utility Functions
-// -----------------------------------------------------------------------------
-double calculateCentroidDeviation(const std::deque<KinematicState>& state_history, double receivedLat, double receivedLon)
-{
-    if (state_history.empty()) return 0.0;
-    double sumLat = 0.0, sumLon = 0.0;
-    for (const auto& state : state_history) {
-        sumLat += state.lat; // Cartesian Y
-        sumLon += state.lon; // Cartesian X
-    }
-    double centerLat = sumLat / state_history.size();
-    double centerLon = sumLon / state_history.size();
-    
-    double dx = receivedLon - centerLon;
-    double dy = receivedLat - centerLat;
-    return std::sqrt(dx*dx + dy*dy);
-}
 
 // -----------------------------------------------------------------------------
 // Utilities & Data Structures
@@ -332,11 +185,7 @@ public:
                           double maxPosDev = 4.3506, double contextSpeedWeight = 5.2264, double contextYawWeight = 0.6536,
                           bool silentMode = false) {
         silent = silentMode;
-        if (drModelName == "HistoryAwareCTRA") {
-            drModel = std::make_unique<CartesianHistoryAwareCtraModel>();
-        } else {
-            drModel = std::make_unique<CartesianCtraDeadReckoningModel>();
-        }
+        drModel = DeadReckoningModelFactory::create(drModelName, "cartesian");
         
         trustEvaluator = TrustEvaluatorFactory::create(trustModelName);
 
@@ -382,7 +231,7 @@ public:
         PredictedState expectedState;
         drModel->predict(history, pastState, expectedState, dt);
         double distError = drModel->computeError(expectedState, currentState);
-        double centroidDeviation = calculateCentroidDeviation(history, currentState.lat, currentState.lon);
+        double centroidDeviation = CartesianCoordinatePolicy::centroidDeviation(history, currentState.lat, currentState.lon);
         auto t1 = std::chrono::high_resolution_clock::now();
 
         history.push_back(currentState);
@@ -403,13 +252,17 @@ public:
         const auto& history = (it != m_cache.end()) ? it->second : dummyHistory;
         KinematicState pastState = (!history.empty()) ? history.back() : dummyState;
 
+        PhysicalInvarianceResult physicsResult = checkPhysicalInvariants<CartesianCoordinatePolicy>(
+            pastState, dummyState, params.speedToleranceMps);
+
         TrustEvaluationContext context {
             history,
             pastState,
             dummyState,
             (m_scores.find(msg.sender) != m_scores.end()) ? m_scores[msg.sender] : 1.0,
             distError,
-            centroidDeviation
+            centroidDeviation,
+            physicsResult
         };
 
         auto t0 = std::chrono::high_resolution_clock::now();
@@ -458,8 +311,11 @@ public:
         PredictedState expectedState;
         drModel->predict(history, pastState, expectedState, dt);
         double distError = drModel->computeError(expectedState, currentState);
-        double centroidDeviation = calculateCentroidDeviation(history, currentState.lat, currentState.lon);
+        double centroidDeviation = CartesianCoordinatePolicy::centroidDeviation(history, currentState.lat, currentState.lon);
         auto t1 = std::chrono::high_resolution_clock::now();
+
+        PhysicalInvarianceResult physicsResult = checkPhysicalInvariants<CartesianCoordinatePolicy>(
+            pastState, currentState, params.speedToleranceMps);
 
         // Stage 2: Beta-Reputation Scoring Update
         TrustEvaluationContext context {
@@ -468,7 +324,8 @@ public:
             currentState,
             m_scores[msg.sender],
             distError,
-            centroidDeviation
+            centroidDeviation,
+            physicsResult
         };
 
         auto t2 = std::chrono::high_resolution_clock::now();
