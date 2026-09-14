@@ -1,6 +1,7 @@
 #include "../include/TrustService.h"
 #include "../../include/CoordinatePolicies.h"
 #include "../../include/PhysicalInvariance.h"
+#include "../../include/CheckerPipeline.h"
 #include "artery/application/Middleware.h"
 #include "artery/traci/VehicleController.h"
 #include "artery/utility/IdentityRegistry.h"
@@ -78,6 +79,9 @@ void TrustService::initialize()
     m_params.maxPosDev = par("maxPositionDeviation").doubleValue();
     m_params.contextSpeedWeight = par("contextSpeedWeight").doubleValue();
     m_params.contextYawWeight = par("contextYawWeight").doubleValue();
+    if (hasPar("centroidSpeedFactor")) {
+        m_params.centroidSpeedFactor = par("centroidSpeedFactor").doubleValue();
+    }
     m_historySize = par("historySize").intValue();
 
 
@@ -192,6 +196,11 @@ void TrustService::receiveSignal(cComponent* source, simsignal_t signal, cObject
     PhysicalInvarianceResult physicsResult = checkPhysicalInvariants<Wgs84CoordinatePolicy>(
         pastKinematicState, *receivedKinematicState, m_params.speedToleranceMps);
 
+    // Pre-compute pipeline results via shared CheckerPipeline.h
+    double dynamicMaxPosDev = computeDynamicThreshold(physicsResult, pastKinematicState.yawRate, m_params);
+    bool centroidCheckPassed = computeCentroidCheck(
+        history, *receivedKinematicState, centroidDeviation, dynamicMaxPosDev, m_params.centroidSpeedFactor);
+
     // 6. Evaluate Trust
     double lastScore = m_scores[stationId];
     TrustEvaluationContext ctx {
@@ -201,7 +210,9 @@ void TrustService::receiveSignal(cComponent* source, simsignal_t signal, cObject
         lastScore, 
         distError, 
         centroidDeviation,
-        physicsResult
+        physicsResult,
+        dynamicMaxPosDev,
+        centroidCheckPassed
     };
     
     if (m_trustEvaluator) {

@@ -22,4 +22,5 @@ simple TrustService like ItsG5Service
         // Context-Aware Dynamic Threshold parameters
         double contextSpeedWeight = default(0.9874);
         double contextYawWeight = default(0.0387);
+        double centroidSpeedFactor = default(0.75);
 }

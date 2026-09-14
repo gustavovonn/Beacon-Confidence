@@ -44,6 +44,9 @@ struct TrustEvaluationContext {
     double distError;
     double centroidDeviation;
     PhysicalInvarianceResult physicsResult = {};
+
+    double dynamicMaxPosDev    = 0.0;   // Context-aware dynamic threshold [m]
+    bool   centroidCheckPassed = false; // Phase 2 centroid rescue verdict
 };
 
 class ITrustEvaluator

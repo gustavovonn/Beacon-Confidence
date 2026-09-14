@@ -2,6 +2,7 @@
 #include "../include/DeadReckoningModels.h"
 #include "../include/CoordinatePolicies.h"
 #include "../include/PhysicalInvariance.h"
+#include "../include/CheckerPipeline.h"
 #include "../include/TrustEvaluators.h"
 #include "../include/Constants.h"
 #include <iostream>
@@ -250,6 +251,12 @@ public:
         PhysicalInvarianceResult physicsResult = checkPhysicalInvariants<CartesianCoordinatePolicy>(
             pastState, currentState, params.speedToleranceMps);
 
+        // Pre-compute pipeline results via shared CheckerPipeline.h —
+        // these are passed to the scorer as context, not computed inside it.
+        double dynamicMaxPosDev = computeDynamicThreshold(physicsResult, pastState.yawRate, params);
+        bool centroidCheckPassed = computeCentroidCheck(
+            history, currentState, centroidDeviation, dynamicMaxPosDev, params.centroidSpeedFactor);
+
         TrustEvaluationContext context {
             history,
             pastState,
@@ -257,7 +264,9 @@ public:
             m_scores[msg.sender],
             distError,
             centroidDeviation,
-            physicsResult
+            physicsResult,
+            dynamicMaxPosDev,
+            centroidCheckPassed
         };
 
         double newScore = trustEvaluator->evaluateTrust(context, params);

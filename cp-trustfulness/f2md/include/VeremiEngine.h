@@ -4,6 +4,7 @@
 #include "../include/CoordinatePolicies.h"
 #include "../include/PhysicalInvariance.h"
 #include "../include/TrustEvaluators.h"
+#include "../include/CheckerPipeline.h"
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -234,6 +235,12 @@ public:
         drModel->predict(history, pastState, expectedState, dt);
         double distError = drModel->computeError(expectedState, currentState);
         double centroidDeviation = CartesianCoordinatePolicy::centroidDeviation(history, currentState.lat, currentState.lon);
+        PhysicalInvarianceResult physicsResult = checkPhysicalInvariants<CartesianCoordinatePolicy>(
+            pastState, currentState, params.speedToleranceMps);
+        double dynamicMaxPosDev = computeDynamicThreshold(physicsResult, pastState.yawRate, params);
+        bool centroidCheckPassed = computeCentroidCheck(
+            history, currentState, centroidDeviation, dynamicMaxPosDev, params.centroidSpeedFactor);
+        (void)centroidCheckPassed;
         auto t1 = std::chrono::high_resolution_clock::now();
 
         history.push_back(currentState);
@@ -256,6 +263,9 @@ public:
 
         PhysicalInvarianceResult physicsResult = checkPhysicalInvariants<CartesianCoordinatePolicy>(
             pastState, dummyState, params.speedToleranceMps);
+        double dynamicMaxPosDev = computeDynamicThreshold(physicsResult, pastState.yawRate, params);
+        bool centroidCheckPassed = computeCentroidCheck(
+            history, dummyState, centroidDeviation, dynamicMaxPosDev, params.centroidSpeedFactor);
 
         TrustEvaluationContext context {
             history,
@@ -264,7 +274,9 @@ public:
             (m_scores.find(msg.sender) != m_scores.end()) ? m_scores[msg.sender] : 1.0,
             distError,
             centroidDeviation,
-            physicsResult
+            physicsResult,
+            dynamicMaxPosDev,
+            centroidCheckPassed
         };
 
         auto t0 = std::chrono::high_resolution_clock::now();
@@ -314,10 +326,13 @@ public:
         drModel->predict(history, pastState, expectedState, dt);
         double distError = drModel->computeError(expectedState, currentState);
         double centroidDeviation = CartesianCoordinatePolicy::centroidDeviation(history, currentState.lat, currentState.lon);
-        auto t1 = std::chrono::high_resolution_clock::now();
 
         PhysicalInvarianceResult physicsResult = checkPhysicalInvariants<CartesianCoordinatePolicy>(
             pastState, currentState, params.speedToleranceMps);
+        double dynamicMaxPosDev = computeDynamicThreshold(physicsResult, pastState.yawRate, params);
+        bool centroidCheckPassed = computeCentroidCheck(
+            history, currentState, centroidDeviation, dynamicMaxPosDev, params.centroidSpeedFactor);
+        auto t1 = std::chrono::high_resolution_clock::now();
 
         // Stage 2: Beta-Reputation Scoring Update
         TrustEvaluationContext context {
@@ -327,7 +342,9 @@ public:
             m_scores[msg.sender],
             distError,
             centroidDeviation,
-            physicsResult
+            physicsResult,
+            dynamicMaxPosDev,
+            centroidCheckPassed
         };
 
         auto t2 = std::chrono::high_resolution_clock::now();
