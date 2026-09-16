@@ -233,7 +233,7 @@ public:
             m_cache[msg.sender] = newHistory;
             if (!silent) {
 #ifndef DISABLE_OUTPUT
-            std::cout << msg.rcvTime << "," << msg.receiver << "," << msg.sender << ",1.0,0.0,0.0\n";
+            std::cout << msg.rcvTime << "," << msg.receiver << "," << msg.sender << ",1.0,0.0\n";
 #endif
             }
             return;
@@ -250,7 +250,7 @@ public:
             if (!silent) {
 #ifndef DISABLE_OUTPUT
                 std::cout << msg.rcvTime << "," << msg.receiver << "," << msg.sender << "," 
-                          << m_scores[msg.sender] << ",0.0,0.0\n";
+                          << m_scores[msg.sender] << ",0.0\n";
 #endif
             }
             return;
