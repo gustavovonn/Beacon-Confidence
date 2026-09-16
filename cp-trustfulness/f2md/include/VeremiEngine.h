@@ -199,7 +199,7 @@ public:
 
         if (!silent) {
 #ifndef DISABLE_OUTPUT
-            std::cout << "rcvTime,sender,score,distError,centroidDeviation\n";
+            std::cout << "rcvTime,sender,score,distError\n";
 #endif
         }
     }
@@ -231,16 +231,12 @@ public:
         if (dt <= 0.0) dt = 0.1;
 
         auto t0 = std::chrono::high_resolution_clock::now();
-        PredictedState expectedState;
-        drModel->predict(history, pastState, expectedState, dt);
-        double distError = drModel->computeError(expectedState, currentState);
-        double centroidDeviation = CartesianCoordinatePolicy::centroidDeviation(history, currentState.lat, currentState.lon);
-        PhysicalInvarianceResult physicsResult = checkPhysicalInvariants<CartesianCoordinatePolicy>(
+        PhysicalInvarianceResult physicsResult = phase0_PhysicalInvariance<CartesianCoordinatePolicy>(
             pastState, currentState, params.speedToleranceMps);
-        double dynamicMaxPosDev = computeDynamicThreshold(physicsResult, pastState.yawRate, params);
-        bool centroidCheckPassed = computeCentroidCheck(
-            history, currentState, centroidDeviation, dynamicMaxPosDev, params.centroidSpeedFactor);
-        (void)centroidCheckPassed;
+        double distError = 0.0, dynamicMaxPosDev = 0.0;
+        phase1_KinematicConsistency(
+            drModel.get(), history, pastState, currentState, dt, params, physicsResult,
+            distError, dynamicMaxPosDev);
         auto t1 = std::chrono::high_resolution_clock::now();
 
         history.push_back(currentState);
@@ -250,7 +246,7 @@ public:
         return true;
     }
 
-    bool runStage2(const RawMessage& msg, double distError = 0.0, double centroidDeviation = 0.0, double* stage2_us = nullptr) {
+    bool runStage2(const RawMessage& msg, double distError = 0.0, double* stage2_us = nullptr) {
         auto it = m_cache.find(msg.sender);
         std::deque<KinematicState> dummyHistory;
         KinematicState dummyState;
@@ -261,11 +257,9 @@ public:
         const auto& history = (it != m_cache.end()) ? it->second : dummyHistory;
         KinematicState pastState = (!history.empty()) ? history.back() : dummyState;
 
-        PhysicalInvarianceResult physicsResult = checkPhysicalInvariants<CartesianCoordinatePolicy>(
+        PhysicalInvarianceResult physicsResult = phase0_PhysicalInvariance<CartesianCoordinatePolicy>(
             pastState, dummyState, params.speedToleranceMps);
         double dynamicMaxPosDev = computeDynamicThreshold(physicsResult, pastState.yawRate, params);
-        bool centroidCheckPassed = computeCentroidCheck(
-            history, dummyState, centroidDeviation, dynamicMaxPosDev, params.centroidSpeedFactor);
 
         TrustEvaluationContext context {
             history,
@@ -273,10 +267,9 @@ public:
             dummyState,
             (m_scores.find(msg.sender) != m_scores.end()) ? m_scores[msg.sender] : 1.0,
             distError,
-            centroidDeviation,
             physicsResult,
             dynamicMaxPosDev,
-            centroidCheckPassed
+            msg.sender
         };
 
         auto t0 = std::chrono::high_resolution_clock::now();
@@ -320,31 +313,26 @@ public:
         double dt = currentState.time - pastState.time;
         if (dt <= 0.0) dt = 0.1;
 
-        // Stage 1: OLS-CTRA Dead-Reckoning & Centroid Plausibility Check
+        // Stage 1: Phase 0, Phase 1, Phase 2 Checkers Pipeline
         auto t0 = std::chrono::high_resolution_clock::now();
-        PredictedState expectedState;
-        drModel->predict(history, pastState, expectedState, dt);
-        double distError = drModel->computeError(expectedState, currentState);
-        double centroidDeviation = CartesianCoordinatePolicy::centroidDeviation(history, currentState.lat, currentState.lon);
-
-        PhysicalInvarianceResult physicsResult = checkPhysicalInvariants<CartesianCoordinatePolicy>(
+        PhysicalInvarianceResult physicsResult = phase0_PhysicalInvariance<CartesianCoordinatePolicy>(
             pastState, currentState, params.speedToleranceMps);
-        double dynamicMaxPosDev = computeDynamicThreshold(physicsResult, pastState.yawRate, params);
-        bool centroidCheckPassed = computeCentroidCheck(
-            history, currentState, centroidDeviation, dynamicMaxPosDev, params.centroidSpeedFactor);
+        double distError = 0.0, dynamicMaxPosDev = 0.0;
+        phase1_KinematicConsistency(
+            drModel.get(), history, pastState, currentState, dt, params, physicsResult,
+            distError, dynamicMaxPosDev);
         auto t1 = std::chrono::high_resolution_clock::now();
 
-        // Stage 2: Beta-Reputation Scoring Update
+        // Stage 2: Scorer Evidence Dispatch & Update
         TrustEvaluationContext context {
             history,
             pastState,
             currentState,
             m_scores[msg.sender],
             distError,
-            centroidDeviation,
             physicsResult,
             dynamicMaxPosDev,
-            centroidCheckPassed
+            msg.sender
         };
 
         auto t2 = std::chrono::high_resolution_clock::now();
@@ -355,7 +343,7 @@ public:
         if (!silent) {
 #ifndef DISABLE_OUTPUT
             std::cout << msg.rcvTime << "," << msg.sender << "," << newScore << "," 
-                      << distError << "," << centroidDeviation << "\n";
+                      << distError << "\n";
 #endif
         }
 

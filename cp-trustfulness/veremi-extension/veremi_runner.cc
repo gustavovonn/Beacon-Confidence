@@ -65,6 +65,9 @@ public:
 
     static std::vector<std::string> getTraceFiles(const std::string& dirPath) {
         std::vector<std::string> parquet_files;
+        if (!std::filesystem::exists(dirPath) || !std::filesystem::is_directory(dirPath)) {
+            return parquet_files;
+        }
         for (const auto& entry : std::filesystem::directory_iterator(dirPath)) {
             if (entry.path().extension() == ".parquet") {
                 if (entry.path().filename().string().find("traceJSON") == 0) {
@@ -178,27 +181,35 @@ private:
     std::unique_ptr<IDeadReckoningModel> drModel;
     std::unique_ptr<ITrustEvaluator> trustEvaluator;
     TrustEvaluationParams params;
+    AblationConfig ablation;
     bool silent;
     size_t historySize;
     
     std::map<long, std::deque<KinematicState>> m_cache;
     std::map<long, double> m_scores;
+    std::map<long, double> m_minScores;
 
 public:
     TrustEvaluationEngine(const std::string& drModelName, const std::string& trustModelName, 
                           const TrustEvaluationParams& evalParams,
-                          bool silentMode = false, size_t histSize = ConstantsApp::DEFAULT_HISTORY_WINDOW) 
-        : historySize(histSize) {
-        silent = silentMode;
+                          bool silentMode = false, size_t histSize = ConstantsApp::DEFAULT_HISTORY_WINDOW,
+                          const AblationConfig& ablationConfig = {}) 
+        : params(evalParams), ablation(ablationConfig), silent(silentMode), historySize(histSize) {
         drModel = DeadReckoningModelFactory::create(drModelName, "cartesian");
-        
-        trustEvaluator = TrustEvaluatorFactory::create(trustModelName);
-        params = evalParams;
+        trustEvaluator = TrustEvaluatorFactory::create(trustModelName, histSize);
     }
 
     void reset() {
         m_cache.clear();
         m_scores.clear();
+        m_minScores.clear();
+        if (trustEvaluator) {
+            trustEvaluator->reset();
+        }
+    }
+
+    const std::map<long, double>& getMinScores() const {
+        return m_minScores;
     }
     
     void processMessage(const RawMessage& msg) {
@@ -214,6 +225,9 @@ public:
         auto it = m_cache.find(msg.sender);
         if (it == m_cache.end()) {
             m_scores[msg.sender] = 1.0;
+            if (m_minScores.find(msg.sender) == m_minScores.end()) {
+                m_minScores[msg.sender] = 1.0;
+            }
             std::deque<KinematicState> newHistory;
             newHistory.push_back(currentState);
             m_cache[msg.sender] = newHistory;
@@ -242,40 +256,39 @@ public:
             return;
         }
 
-        PredictedState expectedState;
-        drModel->predict(history, pastState, expectedState, dt);
+        // 1. Phase 0: Hard Physical Invariance Verification
+        PhysicalInvarianceResult physicsResult = phase0_PhysicalInvariance<CartesianCoordinatePolicy>(
+            pastState, currentState, params.speedToleranceMps, ablation.enablePhase0);
 
-        double distError = drModel->computeError(expectedState, currentState);
-        double centroidDeviation = CartesianCoordinatePolicy::centroidDeviation(history, currentState.lat, currentState.lon);
+        // 2. Phase 1: Kinematic Consistency (OLS-CTRA Dead-Reckoning & Dynamic Threshold)
+        double distError = 0.0;
+        double dynamicMaxPosDev = 0.0;
+        phase1_KinematicConsistency(
+            drModel.get(), history, pastState, currentState, dt, params, physicsResult,
+            distError, dynamicMaxPosDev, ablation.enableDynThresh, ablation.enableDR);
 
-        PhysicalInvarianceResult physicsResult = checkPhysicalInvariants<CartesianCoordinatePolicy>(
-            pastState, currentState, params.speedToleranceMps);
-
-        // Pre-compute pipeline results via shared CheckerPipeline.h —
-        // these are passed to the scorer as context, not computed inside it.
-        double dynamicMaxPosDev = computeDynamicThreshold(physicsResult, pastState.yawRate, params);
-        bool centroidCheckPassed = computeCentroidCheck(
-            history, currentState, centroidDeviation, dynamicMaxPosDev, params.centroidSpeedFactor);
-
+        // 3. Phase 2: Scorer Evidence Dispatch & Posterior Update
         TrustEvaluationContext context {
             history,
             pastState,
             currentState,
             m_scores[msg.sender],
             distError,
-            centroidDeviation,
             physicsResult,
             dynamicMaxPosDev,
-            centroidCheckPassed
+            msg.sender
         };
 
         double newScore = trustEvaluator->evaluateTrust(context, params);
         m_scores[msg.sender] = newScore;
+        if (m_minScores.find(msg.sender) == m_minScores.end() || newScore < m_minScores[msg.sender]) {
+            m_minScores[msg.sender] = newScore;
+        }
 
         if (!silent) {
 #ifndef DISABLE_OUTPUT
             std::cout << msg.rcvTime << "," << msg.receiver << "," << msg.sender << "," << newScore << "," 
-                      << distError << "," << centroidDeviation << "\n";
+                      << distError << "\n";
 #endif
         }
 
@@ -294,9 +307,12 @@ int main(int argc, char* argv[]) {
     std::string trustModelName = "BetaReputation";
     std::string dirPath = "";
     bool profileMode = false;
+    bool minScoresOnly = false;
     size_t historySize = ConstantsApp::DEFAULT_HISTORY_WINDOW;
 
     TrustEvaluationParams params;
+    AblationConfig ablation;
+
     // Offline optimized baseline weights:
     params.maxPosDev = 4.3506;
     params.contextSpeedWeight = 5.2264;
@@ -322,8 +338,6 @@ int main(int argc, char* argv[]) {
             params.speedToleranceMps = std::stod(argv[++i]);
         } else if (arg == "--alphaReward" && i + 1 < argc) {
             params.alphaReward = std::stod(argv[++i]);
-        } else if (arg == "--alphaManeuver" && i + 1 < argc) {
-            params.alphaManeuverReward = std::stod(argv[++i]);
         } else if (arg == "--softMarginRatio" && i + 1 < argc) {
             params.softMarginRatio = std::stod(argv[++i]);
         } else if (arg == "--penaltySoftBase" && i + 1 < argc) {
@@ -332,16 +346,34 @@ int main(int argc, char* argv[]) {
             params.penaltySevereBase = std::stod(argv[++i]);
         } else if (arg == "--maxBetaPenalty" && i + 1 < argc) {
             params.maxBetaPenalty = std::stod(argv[++i]);
+        } else if (arg == "--no-phase0") {
+            ablation.enablePhase0 = false;
+        } else if (arg == "--no-dyn-thresh") {
+            ablation.enableDynThresh = false;
+        } else if (arg == "--no-phase2") {
+            ablation.enablePhase2 = false;
+        } else if (arg == "--no-ols") {
+            ablation.enableOLS = false;
+        } else if (arg == "--no-dr") {
+            ablation.enableDR = false;
         } else if (arg == "--profile") {
             profileMode = true;
+        } else if (arg == "--min-scores") {
+            minScoresOnly = true;
         } else if ((arg == "--historySize" || arg == "--history-size" || arg == "--history") && i + 1 < argc) {
             historySize = std::stoul(argv[++i]);
         }
     }
     
     if (dirPath.empty()) {
-        std::cerr << "Usage: " << argv[0] << " --dir <path> [--dr <model>] [--trust <model>] [--historySize <size>] [--profile]\n";
+        std::cerr << "Usage: " << argv[0] << " --dir <path> [--dr <model>] [--trust <model>] [--historySize <size>] [--profile] [--min-scores]\n";
+        std::cerr << "Ablation flags: [--no-phase0] [--no-dyn-thresh] [--no-phase2] [--no-ols] [--no-dr]\n";
         return 1;
+    }
+
+    // If OLS smoothing is ablated, use bare CTRA model
+    if (!ablation.enableOLS && drModelName == "HistoryAwareCTRA") {
+        drModelName = "CTRA";
     }
 
     // 1. Discover all trace files
@@ -352,7 +384,8 @@ int main(int argc, char* argv[]) {
     }
 
     // 2. Initialize engine
-    TrustEvaluationEngine engine(drModelName, trustModelName, params, profileMode, historySize);
+    bool engineSilent = profileMode || minScoresOnly;
+    TrustEvaluationEngine engine(drModelName, trustModelName, params, engineSilent, historySize, ablation);
 
     // 3. Process stream
     if (profileMode) {
@@ -389,10 +422,26 @@ int main(int argc, char* argv[]) {
         std::cout << "Avg Latency per Msg:  " << (totalMessages > 0 ? (double)duration / totalMessages : 0.0) << " us\n";
         std::cout << "Throughput:           " << (duration > 0 ? (totalMessages * 1000000.0) / duration : 0.0) << " msgs/s\n";
         std::cout << "----------------------------------------\n";
+    } else if (minScoresOnly) {
+        std::map<long, double> globalMinScores;
+        for (const auto& fpath : traceFiles) {
+            auto msgs = ParquetMessageExtractor::extractMessagesFromFile(fpath);
+            engine.reset();
+            for (const auto& msg : msgs) {
+                engine.processMessage(msg);
+            }
+            for (const auto& [sender, sc] : engine.getMinScores()) {
+                if (globalMinScores.find(sender) == globalMinScores.end() || sc < globalMinScores[sender]) {
+                    globalMinScores[sender] = sc;
+                }
+            }
+        }
+        std::cout << "sender,score\n";
+        for (const auto& [sender, sc] : globalMinScores) {
+            std::cout << sender << "," << sc << "\n";
+        }
     } else {
-#ifndef DISABLE_OUTPUT
-        std::cout << "rcvTime,receiver,sender,score,distError,centroidDeviation\n";
-#endif
+        std::cout << "rcvTime,receiver,sender,score,distError\n";
         for (const auto& fpath : traceFiles) {
             auto msgs = ParquetMessageExtractor::extractMessagesFromFile(fpath);
             engine.reset();

@@ -29,8 +29,7 @@ public:
 
     void updateEntitiesColorsInSUMO(long stationId, double trustScore);
 
-    void logContextInCSV(double now, long stationId, double speed, double yawRate, double dt, double distError,
-                         double centroidDeviation);
+    void logContextInCSV(double now, long stationId, double speed, double yawRate, double dt, double distError);
 
     bool requiresListener() const override;
     void finish() override;

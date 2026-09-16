@@ -13,31 +13,21 @@ namespace artery
 double BetaReputationTrustEvaluator::evaluateTrust(const TrustEvaluationContext& context,
                                                    const TrustEvaluationParams& params)
 {
-    // Convert current trust score [0,1] to pseudo Beta parameters (alpha, beta)
-    // Filter inertia (effective memory horizon): N_eff = 1 / (1 - λ)
     double priorWeight = (params.priorWeight > 0.0) ? params.priorWeight 
                                                     : ConstantsPhysics::DEFAULT_PRIOR_WEIGHT;
+
     double alpha = context.lastTrustScore * priorWeight + 1.0;
     double beta = (1.0 - context.lastTrustScore) * priorWeight + 1.0;
 
-    // --- 1. Hard Physical Invariance Verification (Pre-computed by caller) ---
-    const PhysicalInvarianceResult& physicsResult = context.physicsResult;
-
-    // --- 2. Update Beta Coefficients ---
-    // All pre-checks (dynamic threshold, centroid) are pre-computed by the caller
-    // via CheckerPipeline.h and passed in context. Scorer consumes results only.
-    if (physicsResult.failed) {
+    // --- Update Beta Coefficients ---
+    if (context.physicsResult.failed) {
         // Phase 0: Direct physical law violation — penalize immediately.
-        // The centroid check CANNOT forgive a Phase 0 failure.
         double betaPenalty = std::min(params.maxBetaPenalty, 
-                                      params.penaltySevereBase + params.penaltySevereScale * physicsResult.excessRatio);
+                                      params.penaltySevereBase + params.penaltySevereScale * context.physicsResult.excessRatio);
         beta += betaPenalty;
     } else if (context.distError <= context.dynamicMaxPosDev) {
         // Phase 1 pass: trajectory within dynamic threshold.
         alpha += params.alphaReward;
-    } else if (context.centroidCheckPassed) {
-        // Phase 2 rescue: Phase 1 failed but centroid check forgives as legitimate maneuver.
-        alpha += params.alphaManeuverReward;
     } else if (context.distError <= context.dynamicMaxPosDev * params.softMarginRatio) {
         // Soft margin: minor kinematic/GNSS jitter just beyond the dynamic threshold.
         double excessRatio = (context.distError - context.dynamicMaxPosDev) / context.dynamicMaxPosDev;
@@ -57,11 +47,81 @@ double BetaReputationTrustEvaluator::evaluateTrust(const TrustEvaluationContext&
 }
 
 // -----------------------------------------------------------------------------
+// EWMA Evaluator
+// -----------------------------------------------------------------------------
+double EwmaTrustEvaluator::evaluateTrust(const TrustEvaluationContext& context,
+                                         const TrustEvaluationParams& params)
+{
+    // Filter inertia mapped from priorWeight: λ = priorWeight / (priorWeight + 1)
+    double priorWeight = (params.priorWeight > 0.0) ? params.priorWeight 
+                                                    : ConstantsPhysics::DEFAULT_PRIOR_WEIGHT;
+    double lambda = priorWeight / (priorWeight + 1.0);
+
+    // Instantaneous evidence observation in [0, 1]
+    double obs = 0.0;
+    if (context.physicsResult.failed) {
+        // Phase 0 hard physics violation
+        obs = 0.0;
+    } else if (context.distError <= context.dynamicMaxPosDev) {
+        // Phase 1 pass: full consistency
+        obs = 1.0;
+    } else if (context.distError <= context.dynamicMaxPosDev * params.softMarginRatio) {
+        // Soft jitter margin: linear degradation
+        double excessRatio = (context.distError - context.dynamicMaxPosDev) / context.dynamicMaxPosDev;
+        double maxExcess = params.softMarginRatio - 1.0;
+        double factor = (maxExcess > 0.0) ? std::max(0.0, 1.0 - excessRatio / maxExcess) : 0.0;
+        obs = 0.5 * factor;
+    } else {
+        // Severe excess
+        obs = 0.0;
+    }
+
+    double newTrust = lambda * context.lastTrustScore + (1.0 - lambda) * obs;
+    return std::max(0.0, std::min(1.0, newTrust));
+}
+
+// -----------------------------------------------------------------------------
+// Sliding Window Majority Vote Evaluator
+// -----------------------------------------------------------------------------
+double MajorityVoteTrustEvaluator::evaluateTrust(const TrustEvaluationContext& context,
+                                                 const TrustEvaluationParams& params)
+{
+    (void)params;
+    // Binary verdict: pass if no Phase 0 failure AND Phase 1 passed
+    bool passed = false;
+    if (!context.physicsResult.failed) {
+        if (context.distError <= context.dynamicMaxPosDev) {
+            passed = true;
+        }
+    }
+
+    auto& window = m_verdictWindows[context.senderId];
+    window.push_back(passed);
+    while (window.size() > m_windowSize) {
+        window.pop_front();
+    }
+
+    if (window.empty()) return 1.0;
+
+    size_t passCount = 0;
+    for (bool v : window) {
+        if (v) ++passCount;
+    }
+
+    return static_cast<double>(passCount) / static_cast<double>(window.size());
+}
+
+// -----------------------------------------------------------------------------
 // Factory Implementation
 // -----------------------------------------------------------------------------
-std::unique_ptr<ITrustEvaluator> TrustEvaluatorFactory::create(const std::string& name)
+std::unique_ptr<ITrustEvaluator> TrustEvaluatorFactory::create(const std::string& name,
+                                                               size_t windowSize)
 {
-    // In this paper we will focus only in BetaReputation
+    if (name == "EWMA" || name == "ewma") {
+        return std::make_unique<EwmaTrustEvaluator>();
+    } else if (name == "MajorityVote" || name == "majority_vote" || name == "majority") {
+        return std::make_unique<MajorityVoteTrustEvaluator>(windowSize);
+    }
     return std::make_unique<BetaReputationTrustEvaluator>();
 }
 

@@ -126,7 +126,7 @@ BenchmarkResult runOlsCtraPipeline(const std::string& dataPath, const std::strin
     } else if (tier == "2") {
         for (size_t i = 0; i < limit; ++i) {
             double s2 = 0.0;
-            engine.runStage2(all_messages[i], 1.5, 0.5, &s2);
+            engine.runStage2(all_messages[i], 1.5, &s2);
             sum_s2_us += s2;
         }
     } else {

@@ -24,7 +24,6 @@ struct TrustEvaluationParams {
 
     // Reward Policy (Evidence increments)
     double alphaReward = ConstantsPhysics::DEFAULT_ALPHA_REWARD;
-    double alphaManeuverReward = ConstantsPhysics::DEFAULT_ALPHA_MANEUVER_REWARD;
 
     // Penalty Policy (Severity-graduated increments)
     double softMarginRatio = ConstantsPhysics::DEFAULT_SOFT_MARGIN_RATIO;
@@ -33,7 +32,6 @@ struct TrustEvaluationParams {
     double penaltySevereBase = ConstantsPhysics::DEFAULT_PENALTY_SEVERE_BASE;
     double penaltySevereScale = ConstantsPhysics::DEFAULT_PENALTY_SEVERE_SCALE;
     double maxBetaPenalty = ConstantsPhysics::DEFAULT_MAX_BETA_PENALTY;
-    double centroidSpeedFactor = ConstantsPhysics::DEFAULT_CENTROID_SPEED_FACTOR;
 };
 
 struct TrustEvaluationContext {
@@ -42,23 +40,20 @@ struct TrustEvaluationContext {
     const KinematicState& currentState;
     double lastTrustScore;
     double distError;
-    double centroidDeviation;
     PhysicalInvarianceResult physicsResult = {};
 
     double dynamicMaxPosDev    = 0.0;   // Context-aware dynamic threshold [m]
-    bool   centroidCheckPassed = false; // Phase 2 centroid rescue verdict
+    long   senderId            = 0;     // Sender identifier for stateful scorers
 };
 
 class ITrustEvaluator
 {
 public:
     virtual ~ITrustEvaluator() = default;
-
-    // Evaluate and return updated trust score in range [0.0, 1.0]
     virtual double evaluateTrust(const TrustEvaluationContext& context,
                                  const TrustEvaluationParams& params) = 0;
-
     virtual std::string getName() const = 0;
+    virtual void reset() {}
 };
 
 } // namespace artery
