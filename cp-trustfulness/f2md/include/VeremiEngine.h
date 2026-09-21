@@ -301,7 +301,7 @@ public:
             if (stage2_us) *stage2_us = 0.0;
             if (!silent) {
 #ifndef DISABLE_OUTPUT
-            std::cout << msg.rcvTime << "," << msg.sender << ",1.0,0.0,0.0\n";
+            std::cout << msg.rcvTime << "," << msg.sender << ",1.0,0.0\n";
 #endif
             }
             return false;
