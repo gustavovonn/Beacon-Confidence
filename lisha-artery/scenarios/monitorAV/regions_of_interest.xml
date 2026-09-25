@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<regions>
+    <!-- define regions of interest (RoI) here.
+    Only vehicles entering a RoI will be equipped with a middelware.
+    When leaving the RoI the middlewares are removed again.
+    Leave regions empty to consider the whole scenario as RoI.
+    -->
+    <polygon name="center_junction">
+        <point x="180.00" y="420.00" />
+        <point x="180.00" y="300.00" />
+        <point x="300.00" y="300.00" />
+        <point x="300.00" y="420.00" />
+    </polygon>
+
+    <polygon name="spawn">
+        <point x="180.00" y="420.00" />
+        <point x="180.00" y="300.00" />
+        <point x="300.00" y="300.00" />
+        <point x="300.00" y="420.00" />
+    </polygon>
+</regions>

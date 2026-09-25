@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2023-10-05 15:06:27 by Eclipse SUMO netedit Version v1_11_0+0166-10495e5f704
+-->
+
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
+    <route edges="A5A4 A4A3 A3B3 B3C3 C3C4 C4C5 C5B5 B5B4 B4C4 C4C3 C3B3 B3B4" color="yellow" id="route_0"/>
+    <route edges="C4C5 C5B5 B5B4 B4B3 B3C3 C3C4 C4B4 B4A4 A4A3 A3B3 B3B4 B4B5" color="yellow" id="route_1"/>
+    <route edges="A3A4 A4B4 B4C4 C4C5 C5B5 B5B4 B4C4 C4C3 C3B3 B3B4 B4B5" color="yellow" id="route_2"/>
+    <vehicle id="vehicle_1" depart="0.00" route="route_0"/>
+    <vehicle id="vehicle_2" depart="0.00" route="route_1"/>
+    <vehicle id="vehicle_3" depart="0.00" route="route_2"/>
+    <vehicle id="ego0" depart="0.00" route="route_0"/>
+    <vehicle id="vehicle_4" depart="0.00" route="route_1"/>
+    <vehicle id="vehicle_5" depart="0.00" route="route_1"/>
+    <vehicle id="vehicle_6" depart="0.00" route="route_0"/>
+    <vehicle id="vehicle_7" depart="0.00" route="route_0"/>
+</routes>

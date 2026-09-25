@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<services>
+	<service type="artery.application.RsuCaService">
+		<listener port="2001" />
+	</service>
+	<service type="CollectivePerceptionService" name="CP">
+		<listener port="2009" channel="180" aid="639"/>
+		<filters> <type pattern=".*" rate="0.7"/> </filters>
+	</service>
+</services>

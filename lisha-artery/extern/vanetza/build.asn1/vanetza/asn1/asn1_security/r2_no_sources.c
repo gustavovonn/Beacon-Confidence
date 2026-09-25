@@ -1,0 +1,1 @@
+#error "generated security/r2 ASN.1 source files are missing"

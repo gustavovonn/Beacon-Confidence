@@ -1,0 +1,8 @@
+<RSUs>
+  
+  <rsu id="B4" positionX="120.00" positionY="480.00">
+    <antenna direction="0" />
+    <antenna direction="3.141592653589793" />
+  </rsu>
+
+</RSUs>

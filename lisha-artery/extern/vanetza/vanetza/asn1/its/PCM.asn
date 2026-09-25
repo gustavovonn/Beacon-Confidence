@@ -1,0 +1,63 @@
+CAM-PDU-Descriptions {
+itu-t (0) identified-organization (4) etsi (0) itsDomain (5) wg1 (1) en (302637) cam (2) version (2)
+}
+
+DEFINITIONS AUTOMATIC TAGS ::=
+
+BEGIN
+
+IMPORTS
+ItsPduHeader, ReferencePosition, AccelerationControl, Curvature, CurvatureCalculationMode, Heading, LanePosition, Speed, DriveDirection, LongitudinalAcceleration, LateralAcceleration, VerticalAcceleration, StationType, VehicleLength, VehicleWidth, SteeringWheelAngle, PerformanceClass, YawRate, Latitude, Longitude, CenDsrcTollingZone FROM ITS-Container {
+itu-t (0) identified-organization (4) etsi (0) itsDomain (5) wg1 (1) ts (102894) cdd (2) version (2)
+};
+
+
+--  The root data frame for cooperative awareness messages
+
+PCM ::= SEQUENCE {
+    header ItsPduHeader,
+    pcm PerceptionConsensus
+}
+
+PerceptionConsensus ::= SEQUENCE {
+    generationDeltaTime GenerationDeltaTime,
+    pcmParameters PcmParameters
+}
+
+PcmParameters ::= SEQUENCE {
+    basicContainer BasicContainer,
+    highFrequencyContainer HighFrequencyContainer
+}
+
+HighFrequencyContainer ::= CHOICE {
+    basicVehicleContainerHighFrequency BasicVehicleContainerHighFrequency
+}
+
+BasicContainer ::= SEQUENCE {
+    stationType StationType,
+    referencePosition ReferencePosition,
+    ...
+}
+
+BasicVehicleContainerHighFrequency ::= SEQUENCE {
+    heading Heading,
+    speed Speed,
+    driveDirection DriveDirection,
+    vehicleLength VehicleLength,
+    vehicleWidth VehicleWidth,
+    longitudinalAcceleration LongitudinalAcceleration,
+    curvature Curvature,
+    curvatureCalculationMode CurvatureCalculationMode,
+    yawRate YawRate,
+    accelerationControl AccelerationControl OPTIONAL,
+    lanePosition LanePosition OPTIONAL,
+    steeringWheelAngle SteeringWheelAngle OPTIONAL,
+    lateralAcceleration LateralAcceleration OPTIONAL,
+    verticalAcceleration VerticalAcceleration OPTIONAL,
+    performanceClass PerformanceClass OPTIONAL,
+    cenDsrcTollingZone CenDsrcTollingZone OPTIONAL
+}
+
+GenerationDeltaTime ::= INTEGER { oneMilliSec(1) } (0..65535)
+
+END

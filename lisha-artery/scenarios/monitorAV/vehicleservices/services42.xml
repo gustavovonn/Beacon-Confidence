@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<services>
+	<service type="LocalPerceptionNode" name="LocalNode">
+		<listener port="8001"/>
+		<filters><name pattern="vehicle_0"/></filters>
+	</service>
+	<service type="artery.application.CaService" name="CA">
+		<listener port="2001" channel="180" aid="36"/>
+		<filters><name pattern="vehicle_0"/></filters>
+	</service>
+	<service type="CollectivePerceptionService" name="CP">
+		<listener port="2009" channel="180" aid="639"/>
+		<filters><name pattern="vehicle_0"/></filters>
+	</service>
+	<service type="MonitorCa" name="MonCA">
+		<listener port="2001" channel="180" aid="36"/>
+		<filters><name pattern="vehicle_0"/></filters>
+	</service>
+	<service type="MonitorLocalPerception" name="PerServ">
+		<listener port="8001"/>
+		<filters><name pattern="vehicle_0"/></filters>
+	</service>
+	<service type="MonitorCollectivePerception" name="MonitorCPerc">
+		<listener port="2009" channel="180" aid="639"/>
+		<filters><name pattern="vehicle_0"/></filters>
+	</service>
+
+	<service type="artery.application.CaService" name="CA">
+		<listener port="2001" channel="180" aid="36"/>
+		<filters> <type pattern=".*" rate="0.42"/> </filters>
+	</service>
+	<service type="CollectivePerceptionService" name="CP">
+		<listener port="2009" channel="180" aid="639"/>
+		<filters> <type pattern=".*CA" /> </filters>
+	</service>
+	<service type="MonitorMV" name="MonServ">
+		<listener port="2002" channel="180" aid="36"/>
+	</service>
+	
+	<!-- <service type="EgoMotionController" name="EgoControl">
+		<listener port="2002" channel="181" aid="37"/>
+		<filters><name pattern="vehicle_0"/></filters>
+	</service> -->
+</services>

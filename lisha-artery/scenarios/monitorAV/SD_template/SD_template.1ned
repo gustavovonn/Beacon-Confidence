@@ -1,0 +1,11 @@
+import artery.application.ItsG5Service;
+
+simple SD_template like ItsG5Service
+{
+    parameters:
+    bool fileRecord = default(false);
+    bool smartdataEnabled = default(false);
+    
+    string iotURL = default("https://iot.lisha.ufsc.br");
+    int port = default(0);
+}

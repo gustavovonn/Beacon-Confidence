@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<services>
+	<service type="Gateway" name="Gateway">
+		<listener port="8000" />
+	</service>
+
+</services>

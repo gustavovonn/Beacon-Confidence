@@ -1,0 +1,45 @@
+<RSUs>
+  <!--This file was generated with './RSUGenerator.py -n grid_2x2/grid_scenario_regulated.net.xml -o grid_2x2/RSUs.xml'-->
+  <rsu id="A3" positionX="0.0" positionY="240.0">
+    <antenna direction="-1.5707963267948966"/>
+    <antenna direction="0"/>
+  </rsu>
+  <rsu id="A4" positionX="0.0" positionY="120.0">
+    <antenna direction="1.5707963267948966"/>
+    <antenna direction="-1.5707963267948966"/>
+    <antenna direction="0"/>
+  </rsu>
+  <rsu id="B3" positionX="120.0" positionY="240.0">
+    <antenna direction="3.141592653589793"/>
+    <antenna direction="-1.5707963267948966"/>
+    <antenna direction="0"/>
+  </rsu>
+  <rsu id="A5" positionX="0.0" positionY="0.0">
+    <antenna direction="1.5707963267948966"/>
+    <antenna direction="0"/>
+  </rsu>
+  <rsu id="B4" positionX="120.0" positionY="120.0">
+    <antenna direction="3.141592653589793"/>
+    <antenna direction="1.5707963267948966"/>
+    <antenna direction="-1.5707963267948966"/>
+    <antenna direction="0"/>
+  </rsu>
+  <rsu id="B5" positionX="120.0" positionY="0.0">
+    <antenna direction="3.141592653589793"/>
+    <antenna direction="1.5707963267948966"/>
+    <antenna direction="0"/>
+  </rsu>
+  <rsu id="C3" positionX="240.0" positionY="240.0">
+    <antenna direction="3.141592653589793"/>
+    <antenna direction="-1.5707963267948966"/>
+  </rsu>
+  <rsu id="C4" positionX="240.0" positionY="120.0">
+    <antenna direction="3.141592653589793"/>
+    <antenna direction="1.5707963267948966"/>
+    <antenna direction="-1.5707963267948966"/>
+  </rsu>
+  <rsu id="C5" positionX="240.0" positionY="0.0">
+    <antenna direction="3.141592653589793"/>
+    <antenna direction="1.5707963267948966"/>
+  </rsu>
+</RSUs>

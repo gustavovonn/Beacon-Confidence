@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<services>
+
+	<!-- <service type="Device" name="car"> -->
+		<!-- <listener port="8000annel="180" aid="36"/> -->
+	<!-- </service> -->
+
+    <service type="artery.application.CaService" name="CA">
+        <listener port="2001" channel="180" aid="36"/>
+    </service>
+
+	
+	
+</services>

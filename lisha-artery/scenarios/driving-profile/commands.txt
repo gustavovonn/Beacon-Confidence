@@ -1,0 +1,15 @@
+python tools/randomTrips.py -n luxembourg/lust.net.xml --trip-attributes="type=\"vehDist\"" --additional-file luxembourg/custom.add.xml
+
+python tools/duaIterate.py -n luxembourg/lust.net.xml -t luxembourg/lust.trips.xml --additional luxembourg/custom.add.xml
+
+duarouter -n luxembourg/lust.net.xml --route-files luxembourg/lust.trips.xml --additional-files luxembourg/custom.add.xml -o reduced.trips.xml --ignore-errors --write-trips
+
+duarouter 
+    --net-file luxembourg/lust.net.xml 
+    --route-files luxembourg/lust.trips.xml 
+    --additional-files luxembourg/custom.add.xml
+    --output-file validated.trips.xml
+    --vtype-output validated.add.xml
+    --ignore-errors
+
+duarouter --net-file luxembourg/lust.net.xml --route-files luxembourg/lust.trips.xml --additional-files luxembourg/custom.add.xml --output-file validated.trips.xml --vtype-output validated.add.xml --ignore-errors

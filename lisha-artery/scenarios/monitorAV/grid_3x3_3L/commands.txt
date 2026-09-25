@@ -1,0 +1,7 @@
+export SUMO_HOME="$PWD"
+netgenerate -g true --grid.number 4 -L 3 --no-turnarounds true --tls.guess true
+
+
+
+$SUMO_HOME/bin/netgenerate -g true --grid.number 4 -L 3 --tls.guess true --no-turnarounds true
+$SUMO_HOME/tools/randomTrips.py -n net.net.xml --random --insertion-density 50.0 -i 50 --validate -e 100

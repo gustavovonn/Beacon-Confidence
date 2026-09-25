@@ -1,0 +1,31 @@
+ansible/*.retry
+scenarios/**/*.pyc
+scenarios/*/results/*
+scenarios/*/.cmdenv-log
+scenarios/*/.qtenvrc
+scenarios/*/.tkenvrc
+src/artery/messages/*_m.cc
+src/artery/messages/*_m.h
+.vagrant/
+*/*.out
+extern/inet
+extern/pybind11
+extern/sim0mqpp
+extern/simulte
+extern/veins
+
+# Building website with mkdocs
+www/
+venv/
+
+# OMNeT++ IDE / Eclipse CDT auto-generated files
+.cproject
+.oppbuildspec
+.project
+.settings
+
+# VSCode auto-generated files
+.vscode
+
+# CMake default directories
+build/

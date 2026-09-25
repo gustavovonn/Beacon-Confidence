@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2024-02-13 00:19:53 by Eclipse SUMO GUI Version 1.19.0
+-->
+
+<configuration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/sumoConfiguration.xsd">
+
+    <input>
+        <net-file value="net.net.xml"/>
+        <route-files value="75dense.rou.xml"/>
+        <additional-files value="buildings.poly.xml"/> 
+    </input>
+
+    <processing>
+    	<collision.check-junctions value="true"/>
+        <collision.action value="remove"/>
+        <time-to-teleport value="-1"/> 
+        <default.emergencydecel value="-1"/>
+        <lateral-resolution value="0.1"/>
+    </processing>
+
+    <time>
+        <begin value="0"/>
+        <step-length value="0.1"/>
+    </time>
+
+</configuration>
