@@ -101,7 +101,7 @@ void TrustService::trigger()
     // Predict-and-discard loop has been removed. Predictions are made on-demand in receiveSignal.
 }
 
-KinematicState* etsi_cam_unwrap(const auto& asn1_cam)
+static KinematicState* etsi_cam_unwrap(const vanetza::asn1::Cam& asn1_cam)
 {
     KinematicState* kinematicState = new KinematicState();
 
@@ -127,6 +127,7 @@ KinematicState* etsi_cam_unwrap(const auto& asn1_cam)
     kinematicState->time = omnetpp::simTime().dbl();
 
     return kinematicState;
+}
 
 void TrustService::receiveSignal(cComponent* source, simsignal_t signal, cObject* obj, cObject* details)
 {
