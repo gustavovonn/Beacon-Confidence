@@ -13,7 +13,7 @@ simple TrustService like ItsG5Service
 
         // Algorithm strategy selectors
         string drAlgorithm = default("HistoryAwareCTRA");
-        int historySize = default(5);                // Window size for history-aware models
+        int historySize = default(4);                // Window size for history-aware models
         string trustAlgorithm = default("BetaReputation");
 
         // Threshold parameters
@@ -22,4 +22,5 @@ simple TrustService like ItsG5Service
         // Context-Aware Dynamic Threshold parameters
         double contextSpeedWeight = default(0.9874);
         double contextYawWeight = default(0.0387);
+        double centroidSpeedFactor = default(0.75);
 }

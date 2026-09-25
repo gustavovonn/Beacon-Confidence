@@ -29,8 +29,7 @@ public:
 
     void updateEntitiesColorsInSUMO(long stationId, double trustScore);
 
-    void logContextInCSV(double now, long stationId, double speed, double yawRate, double dt, double distError,
-                         double centroidDeviation);
+    void logContextInCSV(double now, long stationId, double speed, double yawRate, double dt, double distError);
 
     bool requiresListener() const override;
     void finish() override;
@@ -47,7 +46,7 @@ private:
 
     // Evaluation Threshold Parameters
     TrustEvaluationParams m_params;
-    int m_historySize = 5;
+    int m_historySize = ConstantsApp::DEFAULT_HISTORY_WINDOW;
 
     // OMNeT++ Output Vectors for logging trust metrics
     std::map<long, omnetpp::cOutVector*> m_trustVectors;

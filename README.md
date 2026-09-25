@@ -126,9 +126,9 @@ cd build
 cmake .. && make
 ```
 
-3. **Standalone C++ Engine Profiling:** To evaluate computational cost and latency outside of the OMNeT++ environment (e.g., for embedded hardware benchmarking), you can run the core `f2md_runner` directly with the `--profile` flag on any parquet data folder.
+3. **Standalone C++ Engine Profiling:** To evaluate computational cost and latency outside of the OMNeT++ environment (e.g., for embedded hardware benchmarking), you can run the core `offline_evaluator` directly with the `--profile` flag on any parquet data folder.
 ```bash
-./cp-trustfulness/f2md/build/f2md_runner --dir <path-to-scenario> --profile
+./cp-trustfulness/f2md/build/offline_evaluator --tier 3 --stage1 ols-ctra --stage2 beta-reputation --dir <path-to-scenario> --profile
 ```
 
 ## References

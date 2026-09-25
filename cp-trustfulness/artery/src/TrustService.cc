@@ -1,4 +1,7 @@
 #include "../include/TrustService.h"
+#include "../../include/CoordinatePolicies.h"
+#include "../../include/PhysicalInvariance.h"
+#include "../../include/CheckerPipeline.h"
 #include "artery/application/Middleware.h"
 #include "artery/traci/VehicleController.h"
 #include "artery/utility/IdentityRegistry.h"
@@ -124,33 +127,6 @@ KinematicState* etsi_cam_unwrap(const auto& asn1_cam)
     kinematicState->time = omnetpp::simTime().dbl();
 
     return kinematicState;
-}
-
-double calculateCentroidDeviation(const std::deque<KinematicState>& state_history,
-                                  double receivedLat, double receivedLon)
-{
-    if (state_history.empty()) return 0.0;
-
-    double sumLat = 0.0;
-    double sumLon = 0.0;
-
-    for (const auto& snap : state_history) {
-        sumLat += snap.lat;
-        sumLon += snap.lon;
-    }
-
-    double cLat = sumLat / state_history.size();
-    double cLon = sumLon / state_history.size();
-
-    double latRad1 = cLat * M_PI / 180.0;
-    double latRad2 = receivedLat * M_PI / 180.0;
-    double lonRad1 = cLon * M_PI / 180.0;
-    double lonRad2 = receivedLon * M_PI / 180.0;
-    double x = (lonRad2 - lonRad1) * std::cos((latRad1 + latRad2) / 2.0);
-    double y = (latRad2 - latRad1);
-
-    return (6371000.0 * std::sqrt(x * x + y * y));
-}
 
 void TrustService::receiveSignal(cComponent* source, simsignal_t signal, cObject* obj, cObject* details)
 {
@@ -192,28 +168,17 @@ void TrustService::receiveSignal(cComponent* source, simsignal_t signal, cObject
     // 1. Compute time gap since last received CAM for this vehicle
     double dt = receivedKinematicState->time - pastKinematicState.time;
 
-    // 2. Predict Spatial State
-    PredictedState expectedState;
-    if (m_drModel && dt > 0.0) {
-        m_drModel->predict(history, pastKinematicState, expectedState, dt);
-    } else {
-        expectedState.lat = pastKinematicState.lat;
-        expectedState.lon = pastKinematicState.lon;
-        expectedState.speed = pastKinematicState.speed;
-        expectedState.heading = pastKinematicState.heading;
-    }
+    // 1. Phase 0: Hard Physical Invariance Verification
+    PhysicalInvarianceResult physicsResult = phase0_PhysicalInvariance<Wgs84CoordinatePolicy>(
+        pastKinematicState, *receivedKinematicState, m_params.speedToleranceMps);
 
-    // 3. Compute Distance Error
-    double distError = 0.0;
-    if (m_drModel) {
-        distError = m_drModel->computeError(expectedState, *receivedKinematicState);
-    }
+    // 2. Phase 1: Kinematic Consistency (DR Prediction & Dynamic Threshold)
+    double distError = 0.0, dynamicMaxPosDev = 0.0;
+    phase1_KinematicConsistency(
+        m_drModel.get(), history, pastKinematicState, *receivedKinematicState, dt, m_params, physicsResult,
+        distError, dynamicMaxPosDev);
 
-    // 4. Centroid Deviation
-    double centroidDeviation = calculateCentroidDeviation(history, 
-        receivedKinematicState->lat, receivedKinematicState->lon);
-
-    // 5. Evaluate Trust
+    // 3. Phase 2: Scorer Evidence Dispatch & Posterior Update
     double lastScore = m_scores[stationId];
     TrustEvaluationContext ctx {
         history, 
@@ -221,14 +186,16 @@ void TrustService::receiveSignal(cComponent* source, simsignal_t signal, cObject
         *receivedKinematicState, 
         lastScore, 
         distError, 
-        centroidDeviation
+        physicsResult,
+        dynamicMaxPosDev,
+        stationId
     };
     
     if (m_trustEvaluator) {
         m_scores[stationId] = m_trustEvaluator->evaluateTrust(ctx, m_params);
     }
 
-    this->logContextInCSV(omnetpp::simTime().dbl(), stationId, receivedKinematicState->speed, receivedKinematicState->yawRate, dt, distError, centroidDeviation);
+    this->logContextInCSV(omnetpp::simTime().dbl(), stationId, receivedKinematicState->speed, receivedKinematicState->yawRate, dt, distError);
 
     // ====================================================================
     // Updates SQLite/OMNet++ vectors.
@@ -330,7 +297,7 @@ void TrustService::updateEntitiesColorsInSUMO(long stationId, double trustScore)
 }
 
 void TrustService::logContextInCSV(double now, long stationId, double speed,
-    double yawRate, double dt, double distError, double centroidDeviation)
+    double yawRate, double dt, double distError)
 {
     // ======================================================================
     // CSV Log Context Dataset for Offline Optimization
@@ -341,12 +308,11 @@ void TrustService::logContextInCSV(double now, long stationId, double speed,
         g_csvFile.open("results/offline-training/trust_context_dataset.csv", std::ios::out | std::ios::trunc);
     }
     if (!g_csvHeaderWritten) {
-        g_csvFile << "time,nodeId,speed,yawRate,dt,distError,centroidDeviation\n";
+        g_csvFile << "time,nodeId,speed,yawRate,dt,distError\n";
         g_csvHeaderWritten = true;
     }
     g_csvFile << now << "," << stationId << "," << speed << ","
-            << yawRate << "," << dt << "," << distError << ","
-            << centroidDeviation << "\n";
+            << yawRate << "," << dt << "," << distError << "\n";
 }
 
 bool TrustService::requiresListener() const

@@ -72,6 +72,10 @@ namespace ConstantsApp {
     /// Minimum OLS denominator magnitude below which the least-squares fit
     /// is considered degenerate and last-known state values are kept.
     constexpr double OLS_DENOM_THRESHOLD = 1e-6;
+
+    /// Default history window size W for history-aware dead reckoning (OLS regression).
+    /// Grounded in empirical window sweep (peaks at W=4, corresponding to ~0.4s context at 10 Hz).
+    constexpr size_t DEFAULT_HISTORY_WINDOW = 4;
 }
 
 namespace ConstantsPhysics {

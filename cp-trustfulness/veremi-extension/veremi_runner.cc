@@ -1,4 +1,8 @@
 #include "../include/IDeadReckoningModel.h"
+#include "../include/DeadReckoningModels.h"
+#include "../include/CoordinatePolicies.h"
+#include "../include/PhysicalInvariance.h"
+#include "../include/CheckerPipeline.h"
 #include "../include/TrustEvaluators.h"
 #include "../include/Constants.h"
 #include <iostream>
@@ -15,156 +19,6 @@
 using namespace artery;
 
 // -----------------------------------------------------------------------------
-// Cartesian CTRA Integration
-// -----------------------------------------------------------------------------
-static void cartesianCtraIntegrate(double startX, double startY, double startSpeed, double startHeading, 
-                                   double a, double w, double dt, PredictedState& nextState)
-{
-    const double headingRad = startHeading * M_PI / 180.0;
-    
-    if (std::abs(w) < 1e-4)
-    {
-        const double predictedSpeed = startSpeed + a * dt;
-        double dist = startSpeed * dt + 0.5 * a * dt * dt;
-        if (predictedSpeed <= 0.0 || dist < 0.0) {
-            dist = 0.0;
-            nextState.speed = 0.0;
-        } else {
-            nextState.speed = predictedSpeed;
-        }
-        
-        const double dy = dist * std::cos(headingRad);
-        const double dx = dist * std::sin(headingRad);
-        
-        nextState.lat = startY + dy; // Store Y in lat
-        nextState.lon = startX + dx; // Store X in lon
-        nextState.heading = startHeading;
-        return;
-    }
-    
-    const double v_dt = startSpeed + a * dt;
-    const double newHeadingRad = headingRad + w * dt;
-    
-    const double inv_w = 1.0 / w;
-    const double a_over_w2 = a / (w * w);
-    
-    const double sinH0 = std::sin(headingRad);
-    const double cosH0 = std::cos(headingRad);
-    const double sinH1 = std::sin(newHeadingRad);
-    const double cosH1 = std::cos(newHeadingRad);
-    
-    const double dx = inv_w * (v_dt * sinH1 - startSpeed * sinH0) + a_over_w2 * (cosH1 - cosH0);
-    const double dy = inv_w * (-v_dt * cosH1 + startSpeed * cosH0) + a_over_w2 * (sinH1 - sinH0);
-    
-    nextState.lat = startY + dy;
-    nextState.lon = startX + dx;
-    nextState.speed = std::max(0.0, v_dt);
-    
-    double headingDeg = std::fmod(newHeadingRad * 180.0 / M_PI, 360.0);
-    if (headingDeg < 0.0) headingDeg += 360.0;
-    nextState.heading = headingDeg;
-}
-
-// -----------------------------------------------------------------------------
-// Cartesian Dead Reckoning Models
-// -----------------------------------------------------------------------------
-class CartesianCtraDeadReckoningModel : public IDeadReckoningModel
-{
-public:
-    void predict(const std::deque<KinematicState>& history, const KinematicState& lastState, PredictedState& nextState, double dt) override {
-        if (dt <= 0.0) return;
-        cartesianCtraIntegrate(lastState.lon, lastState.lat, lastState.speed, lastState.heading, 
-                               lastState.accel, lastState.yawRate, dt, nextState);
-    }
-    double computeError(const PredictedState& expected, const KinematicState& actual) override {
-        double dx = expected.lon - actual.lon;
-        double dy = expected.lat - actual.lat;
-        return std::sqrt(dx*dx + dy*dy);
-    }
-    std::string getName() const override { return "CartesianCTRA"; }
-};
-
-class CartesianHistoryAwareCtraModel : public IDeadReckoningModel
-{
-private:
-    double unwrapHeading(double currentHeading, double previousHeading) {
-        double diff = currentHeading - previousHeading;
-        diff -= 360.0 * std::floor((diff + 180.0) / 360.0);
-        return previousHeading + diff;
-    }
-public:
-    void predict(const std::deque<KinematicState>& history, const KinematicState& lastState, PredictedState& nextState, double dt) override {
-        if (dt <= 0.0) return;
-        if (history.size() < 3) {
-            CartesianCtraDeadReckoningModel fallback;
-            fallback.predict(history, lastState, nextState, dt);
-            return;
-        }
-
-        double sum_t = 0.0, sum_v = 0.0, sum_h = 0.0;
-        double sum_t2 = 0.0, sum_tv = 0.0, sum_th = 0.0;
-        const double t0 = history.front().time;
-        double prevHeading = history.front().heading;
-        const size_t n = history.size();
-
-        for (size_t i = 0; i < n; ++i) {
-            const double t = history[i].time - t0;
-            const double v = history[i].speed;
-            double h = history[i].heading;
-            if (i > 0) {
-                h = unwrapHeading(h, prevHeading);
-                prevHeading = h;
-            }
-            sum_t  += t;
-            sum_v  += v;
-            sum_h  += h;
-            sum_t2 += t * t;
-            sum_tv += t * v;
-            sum_th += t * h;
-        }
-
-        const double denom = static_cast<double>(n) * sum_t2 - sum_t * sum_t;
-        double a, w;
-        if (std::abs(denom) < 1e-6) {
-            a = lastState.accel;
-            w = lastState.yawRate;
-        } else {
-            a = (static_cast<double>(n) * sum_tv - sum_t * sum_v) / denom;
-            const double w_deg = (static_cast<double>(n) * sum_th - sum_t * sum_h) / denom;
-            w = w_deg * M_PI / 180.0;
-        }
-
-        cartesianCtraIntegrate(lastState.lon, lastState.lat, lastState.speed, lastState.heading, 
-                               a, w, dt, nextState);
-    }
-    double computeError(const PredictedState& expected, const KinematicState& actual) override {
-        double dx = expected.lon - actual.lon;
-        double dy = expected.lat - actual.lat;
-        return std::sqrt(dx*dx + dy*dy);
-    }
-    std::string getName() const override { return "CartesianHistoryAwareCTRA"; }
-};
-
-// -----------------------------------------------------------------------------
-// Utility Functions
-// -----------------------------------------------------------------------------
-double calculateCentroidDeviation(const std::deque<KinematicState>& state_history, double receivedLat, double receivedLon)
-{
-    if (state_history.empty()) return 0.0;
-    double sumLat = 0.0, sumLon = 0.0;
-    for (const auto& state : state_history) {
-        sumLat += state.lat; // Cartesian Y
-        sumLon += state.lon; // Cartesian X
-    }
-    double centerLat = sumLat / state_history.size();
-    double centerLon = sumLon / state_history.size();
-    
-    double dx = receivedLon - centerLon;
-    double dy = receivedLat - centerLat;
-    return std::sqrt(dx*dx + dy*dy);
-}
-
-// -----------------------------------------------------------------------------
 // Utilities & Data Structures
 // -----------------------------------------------------------------------------
 #include <arrow/api.h>
@@ -175,13 +29,14 @@ double calculateCentroidDeviation(const std::deque<KinematicState>& state_histor
 
 struct RawMessage {
     double rcvTime;
+    long receiver;
     long sender;
     double pos_x;
     double pos_y;
     double speed;
     double heading;
-    double accel;     // Computed during extraction
-    double yawRate;   // Computed during extraction
+    double accel;     // Parsed longitudinal acceleration from dataset (or 0.0)
+    double yawRate;   // Yaw rate (0.0 if not logged in dataset)
     
     // For sorting
     bool operator<(const RawMessage& other) const {
@@ -189,19 +44,30 @@ struct RawMessage {
     }
 };
 
-struct PrevState {
-    double time;
-    double speed;
-    double heading;
-};
-
 // -----------------------------------------------------------------------------
 // Parquet Message Extractor
 // -----------------------------------------------------------------------------
 class ParquetMessageExtractor {
 public:
-    static std::vector<RawMessage> extractMessages(const std::string& dirPath) {
+    static long extractReceiverIdFromPath(const std::string& fpath) {
+        std::string fname = std::filesystem::path(fpath).filename().string();
+        size_t p1 = fname.find('-');
+        if (p1 != std::string::npos) {
+            size_t p2 = fname.find('-', p1 + 1);
+            if (p2 != std::string::npos) {
+                try {
+                    return std::stol(fname.substr(p1 + 1, p2 - p1 - 1));
+                } catch (...) {}
+            }
+        }
+        return -1;
+    }
+
+    static std::vector<std::string> getTraceFiles(const std::string& dirPath) {
         std::vector<std::string> parquet_files;
+        if (!std::filesystem::exists(dirPath) || !std::filesystem::is_directory(dirPath)) {
+            return parquet_files;
+        }
         for (const auto& entry : std::filesystem::directory_iterator(dirPath)) {
             if (entry.path().extension() == ".parquet") {
                 if (entry.path().filename().string().find("traceJSON") == 0) {
@@ -209,97 +75,101 @@ public:
                 }
             }
         }
+        std::sort(parquet_files.begin(), parquet_files.end());
+        return parquet_files;
+    }
 
-        std::vector<RawMessage> all_messages;
+    static std::vector<RawMessage> extractMessagesFromFile(const std::string& fpath) {
+        long receiver_id = extractReceiverIdFromPath(fpath);
+        std::vector<RawMessage> messages;
+
+        auto infile_result = arrow::io::ReadableFile::Open(fpath);
+        if (!infile_result.ok()) return messages;
+        auto infile = infile_result.ValueOrDie();
         
-        for (const auto& fpath : parquet_files) {
-            auto infile_result = arrow::io::ReadableFile::Open(fpath);
-            if (!infile_result.ok()) continue;
-            auto infile = infile_result.ValueOrDie();
-            
-            auto reader_result = parquet::arrow::OpenFile(infile, arrow::default_memory_pool());
-            if (!reader_result.ok()) continue;
-            auto reader = std::move(reader_result.ValueOrDie());
-            
-            auto table_result = reader->ReadTable();
-            if (!table_result.ok()) continue;
-            auto table = table_result.ValueOrDie();
-            
-            auto type_col = table->GetColumnByName("type");
-            auto rcvTime_col = table->GetColumnByName("rcvTime");
-            auto sender_col = table->GetColumnByName("sender");
-            auto pos_x_col = table->GetColumnByName("pos_x");
-            auto pos_y_col = table->GetColumnByName("pos_y");
-            auto spd_x_col = table->GetColumnByName("spd_x");
-            auto spd_y_col = table->GetColumnByName("spd_y");
-            auto hed_x_col = table->GetColumnByName("hed_x");
-            auto hed_y_col = table->GetColumnByName("hed_y");
-            
-            if (!type_col || !rcvTime_col || !sender_col || !pos_x_col || !pos_y_col || !spd_x_col || !spd_y_col || !hed_x_col || !hed_y_col) {
-                continue;
+        auto reader_result = parquet::arrow::OpenFile(infile, arrow::default_memory_pool());
+        if (!reader_result.ok()) return messages;
+        auto reader = std::move(reader_result.ValueOrDie());
+        
+        auto table_result = reader->ReadTable();
+        if (!table_result.ok()) return messages;
+        auto table = table_result.ValueOrDie();
+        
+        auto type_col = table->GetColumnByName("type");
+        auto rcvTime_col = table->GetColumnByName("rcvTime");
+        auto sender_col = table->GetColumnByName("sender");
+        auto pos_x_col = table->GetColumnByName("pos_x");
+        auto pos_y_col = table->GetColumnByName("pos_y");
+        auto spd_x_col = table->GetColumnByName("spd_x");
+        auto spd_y_col = table->GetColumnByName("spd_y");
+        auto hed_x_col = table->GetColumnByName("hed_x");
+        auto hed_y_col = table->GetColumnByName("hed_y");
+        
+        auto acl_x_col = table->GetColumnByName("acl_x");
+        auto acl_y_col = table->GetColumnByName("acl_y");
+        
+        if (!type_col || !rcvTime_col || !sender_col || !pos_x_col || !pos_y_col || !spd_x_col || !spd_y_col || !hed_x_col || !hed_y_col) {
+            return messages;
+        }
+        
+        for (int chunk_idx = 0; chunk_idx < type_col->num_chunks(); ++chunk_idx) {
+            auto type_arr = std::static_pointer_cast<arrow::Int64Array>(type_col->chunk(chunk_idx));
+            auto time_arr = std::static_pointer_cast<arrow::DoubleArray>(rcvTime_col->chunk(chunk_idx));
+            auto sender_arr = std::static_pointer_cast<arrow::Int64Array>(sender_col->chunk(chunk_idx));
+            auto px_arr = std::static_pointer_cast<arrow::DoubleArray>(pos_x_col->chunk(chunk_idx));
+            auto py_arr = std::static_pointer_cast<arrow::DoubleArray>(pos_y_col->chunk(chunk_idx));
+            auto sx_arr = std::static_pointer_cast<arrow::DoubleArray>(spd_x_col->chunk(chunk_idx));
+            auto sy_arr = std::static_pointer_cast<arrow::DoubleArray>(spd_y_col->chunk(chunk_idx));
+            auto hx_arr = std::static_pointer_cast<arrow::DoubleArray>(hed_x_col->chunk(chunk_idx));
+            auto hy_arr = std::static_pointer_cast<arrow::DoubleArray>(hed_y_col->chunk(chunk_idx));
+
+            std::shared_ptr<arrow::DoubleArray> ax_arr = nullptr;
+            std::shared_ptr<arrow::DoubleArray> ay_arr = nullptr;
+            if (acl_x_col && acl_y_col && chunk_idx < acl_x_col->num_chunks() && chunk_idx < acl_y_col->num_chunks()) {
+                ax_arr = std::static_pointer_cast<arrow::DoubleArray>(acl_x_col->chunk(chunk_idx));
+                ay_arr = std::static_pointer_cast<arrow::DoubleArray>(acl_y_col->chunk(chunk_idx));
             }
             
-            for (int chunk_idx = 0; chunk_idx < type_col->num_chunks(); ++chunk_idx) {
-                auto type_arr = std::static_pointer_cast<arrow::Int64Array>(type_col->chunk(chunk_idx));
-                auto time_arr = std::static_pointer_cast<arrow::DoubleArray>(rcvTime_col->chunk(chunk_idx));
-                auto sender_arr = std::static_pointer_cast<arrow::Int64Array>(sender_col->chunk(chunk_idx));
-                auto px_arr = std::static_pointer_cast<arrow::DoubleArray>(pos_x_col->chunk(chunk_idx));
-                auto py_arr = std::static_pointer_cast<arrow::DoubleArray>(pos_y_col->chunk(chunk_idx));
-                auto sx_arr = std::static_pointer_cast<arrow::DoubleArray>(spd_x_col->chunk(chunk_idx));
-                auto sy_arr = std::static_pointer_cast<arrow::DoubleArray>(spd_y_col->chunk(chunk_idx));
-                auto hx_arr = std::static_pointer_cast<arrow::DoubleArray>(hed_x_col->chunk(chunk_idx));
-                auto hy_arr = std::static_pointer_cast<arrow::DoubleArray>(hed_y_col->chunk(chunk_idx));
-                
-                for (int64_t i = 0; i < type_arr->length(); ++i) {
-                    if (!type_arr->IsNull(i) && type_arr->Value(i) == 3) {
-                        RawMessage msg;
-                        msg.rcvTime = time_arr->Value(i);
-                        msg.sender = sender_arr->Value(i);
-                        msg.pos_x = px_arr->Value(i);
-                        msg.pos_y = py_arr->Value(i);
-                        
-                        double sx = sx_arr->Value(i);
-                        double sy = sy_arr->Value(i);
-                        msg.speed = std::sqrt(sx*sx + sy*sy);
-                        
-                        double hx = hx_arr->Value(i);
-                        double hy = hy_arr->Value(i);
-                        double h_deg = std::atan2(hx, hy) * 180.0 / M_PI;
-                        if (h_deg < 0) h_deg += 360.0;
-                        msg.heading = h_deg;
+            for (int64_t i = 0; i < type_arr->length(); ++i) {
+                if (!type_arr->IsNull(i) && type_arr->Value(i) == 3) {
+                    RawMessage msg;
+                    msg.rcvTime = time_arr->Value(i);
+                    msg.receiver = receiver_id;
+                    msg.sender = sender_arr->Value(i);
+                    msg.pos_x = px_arr->Value(i);
+                    msg.pos_y = py_arr->Value(i);
+                    
+                    double sx = sx_arr->Value(i);
+                    double sy = sy_arr->Value(i);
+                    msg.speed = std::sqrt(sx*sx + sy*sy);
+                    
+                    double hx = hx_arr->Value(i);
+                    double hy = hy_arr->Value(i);
+                    double h_deg = std::atan2(hx, hy) * 180.0 / M_PI;
+                    if (h_deg < 0) h_deg += 360.0;
+                    msg.heading = h_deg;
+
+                    // Parse instantaneous longitudinal acceleration if present in dataset
+                    if (ax_arr && ay_arr && !ax_arr->IsNull(i) && !ay_arr->IsNull(i)) {
+                        double ax = ax_arr->Value(i);
+                        double ay = ay_arr->Value(i);
+                        double h_rad = h_deg * M_PI / 180.0;
+                        // Project 2D Cartesian acceleration onto vehicle heading vector
+                        msg.accel = ax * std::sin(h_rad) + ay * std::cos(h_rad);
+                    } else {
                         msg.accel = 0.0;
-                        msg.yawRate = 0.0;
-                        
-                        all_messages.push_back(msg);
                     }
+                    
+                    msg.yawRate = 0.0; // Yaw rate is not logged in VeReMi traces
+                    
+                    messages.push_back(msg);
                 }
             }
         }
         
-        std::sort(all_messages.begin(), all_messages.end());
-        computeDerivedKinematics(all_messages);
+        std::sort(messages.begin(), messages.end());
         
-        return all_messages;
-    }
-
-private:
-    static void computeDerivedKinematics(std::vector<RawMessage>& all_messages) {
-        std::map<long, PrevState> prev_states;
-        
-        for (auto& msg : all_messages) {
-            auto p_it = prev_states.find(msg.sender);
-            if (p_it != prev_states.end()) {
-                double dt = msg.rcvTime - p_it->second.time;
-                if (dt <= 0.0) dt = 0.1;
-                
-                msg.accel = (msg.speed - p_it->second.speed) / dt;
-                
-                double diff = msg.heading - p_it->second.heading;
-                diff -= 360.0 * std::floor((diff + 180.0) / 360.0);
-                msg.yawRate = (diff * M_PI / 180.0) / dt;
-            }
-            prev_states[msg.sender] = {msg.rcvTime, msg.speed, msg.heading};
-        }
+        return messages;
     }
 };
 
@@ -311,32 +181,35 @@ private:
     std::unique_ptr<IDeadReckoningModel> drModel;
     std::unique_ptr<ITrustEvaluator> trustEvaluator;
     TrustEvaluationParams params;
+    AblationConfig ablation;
     bool silent;
     size_t historySize;
     
     std::map<long, std::deque<KinematicState>> m_cache;
     std::map<long, double> m_scores;
+    std::map<long, double> m_minScores;
 
 public:
     TrustEvaluationEngine(const std::string& drModelName, const std::string& trustModelName, 
                           const TrustEvaluationParams& evalParams,
-                          bool silentMode = false, size_t histSize = 5) 
-        : historySize(histSize) {
-        silent = silentMode;
-        if (drModelName == "HistoryAwareCTRA") {
-            drModel = std::make_unique<CartesianHistoryAwareCtraModel>();
-        } else {
-            drModel = std::make_unique<CartesianCtraDeadReckoningModel>();
-        }
-        
-        trustEvaluator = TrustEvaluatorFactory::create(trustModelName);
-        params = evalParams;
+                          bool silentMode = false, size_t histSize = ConstantsApp::DEFAULT_HISTORY_WINDOW,
+                          const AblationConfig& ablationConfig = {}) 
+        : params(evalParams), ablation(ablationConfig), silent(silentMode), historySize(histSize) {
+        drModel = DeadReckoningModelFactory::create(drModelName, "cartesian");
+        trustEvaluator = TrustEvaluatorFactory::create(trustModelName, histSize);
+    }
 
-        if (!silent) {
-#ifndef DISABLE_OUTPUT
-            std::cout << "rcvTime,sender,score,distError,centroidDeviation\n";
-#endif
+    void reset() {
+        m_cache.clear();
+        m_scores.clear();
+        m_minScores.clear();
+        if (trustEvaluator) {
+            trustEvaluator->reset();
         }
+    }
+
+    const std::map<long, double>& getMinScores() const {
+        return m_minScores;
     }
     
     void processMessage(const RawMessage& msg) {
@@ -352,12 +225,15 @@ public:
         auto it = m_cache.find(msg.sender);
         if (it == m_cache.end()) {
             m_scores[msg.sender] = 1.0;
+            if (m_minScores.find(msg.sender) == m_minScores.end()) {
+                m_minScores[msg.sender] = 1.0;
+            }
             std::deque<KinematicState> newHistory;
             newHistory.push_back(currentState);
             m_cache[msg.sender] = newHistory;
             if (!silent) {
 #ifndef DISABLE_OUTPUT
-            std::cout << msg.rcvTime << "," << msg.sender << ",1.0,0.0,0.0\n";
+            std::cout << msg.rcvTime << "," << msg.receiver << "," << msg.sender << ",1.0,0.0\n";
 #endif
             }
             return;
@@ -367,30 +243,52 @@ public:
         KinematicState pastState = history.back();
         
         double dt = currentState.time - pastState.time;
-        if (dt <= 0.0) dt = 0.1;
+        if (dt < 0.05) return;
+        if (dt > ConstantsPhysics::MAX_INTER_FRAME_TIME) {
+            history.clear();
+            history.push_back(currentState);
+            if (!silent) {
+#ifndef DISABLE_OUTPUT
+                std::cout << msg.rcvTime << "," << msg.receiver << "," << msg.sender << "," 
+                          << m_scores[msg.sender] << ",0.0\n";
+#endif
+            }
+            return;
+        }
 
-        PredictedState expectedState;
-        drModel->predict(history, pastState, expectedState, dt);
+        // 1. Phase 0: Hard Physical Invariance Verification
+        PhysicalInvarianceResult physicsResult = phase0_PhysicalInvariance<CartesianCoordinatePolicy>(
+            pastState, currentState, params.speedToleranceMps, ablation.enablePhase0);
 
-        double distError = drModel->computeError(expectedState, currentState);
-        double centroidDeviation = calculateCentroidDeviation(history, currentState.lat, currentState.lon);
+        // 2. Phase 1: Kinematic Consistency (OLS-CTRA Dead-Reckoning & Dynamic Threshold)
+        double distError = 0.0;
+        double dynamicMaxPosDev = 0.0;
+        phase1_KinematicConsistency(
+            drModel.get(), history, pastState, currentState, dt, params, physicsResult,
+            distError, dynamicMaxPosDev, ablation.enableDynThresh, ablation.enableDR);
 
+        // 3. Phase 2: Scorer Evidence Dispatch & Posterior Update
         TrustEvaluationContext context {
             history,
             pastState,
             currentState,
             m_scores[msg.sender],
             distError,
-            centroidDeviation
+            physicsResult,
+            dynamicMaxPosDev,
+            msg.sender
         };
 
         double newScore = trustEvaluator->evaluateTrust(context, params);
         m_scores[msg.sender] = newScore;
+        if (m_minScores.find(msg.sender) == m_minScores.end() || newScore < m_minScores[msg.sender]) {
+            m_minScores[msg.sender] = newScore;
+        }
 
         if (!silent) {
 #ifndef DISABLE_OUTPUT
-            std::cout << msg.rcvTime << "," << msg.sender << "," << newScore << "," 
-                      << distError << "," << centroidDeviation << "\n";
+            std::cout << msg.rcvTime << "," << msg.receiver << "," << msg.sender << "," << newScore << "," 
+                      << distError << "\n";
 #endif
         }
 
@@ -409,9 +307,12 @@ int main(int argc, char* argv[]) {
     std::string trustModelName = "BetaReputation";
     std::string dirPath = "";
     bool profileMode = false;
-    size_t historySize = 5;
+    bool minScoresOnly = false;
+    size_t historySize = ConstantsApp::DEFAULT_HISTORY_WINDOW;
 
     TrustEvaluationParams params;
+    AblationConfig ablation;
+
     // Offline optimized baseline weights:
     params.maxPosDev = 4.3506;
     params.contextSpeedWeight = 5.2264;
@@ -437,8 +338,6 @@ int main(int argc, char* argv[]) {
             params.speedToleranceMps = std::stod(argv[++i]);
         } else if (arg == "--alphaReward" && i + 1 < argc) {
             params.alphaReward = std::stod(argv[++i]);
-        } else if (arg == "--alphaManeuver" && i + 1 < argc) {
-            params.alphaManeuverReward = std::stod(argv[++i]);
         } else if (arg == "--softMarginRatio" && i + 1 < argc) {
             params.softMarginRatio = std::stod(argv[++i]);
         } else if (arg == "--penaltySoftBase" && i + 1 < argc) {
@@ -447,31 +346,67 @@ int main(int argc, char* argv[]) {
             params.penaltySevereBase = std::stod(argv[++i]);
         } else if (arg == "--maxBetaPenalty" && i + 1 < argc) {
             params.maxBetaPenalty = std::stod(argv[++i]);
+        } else if (arg == "--no-phase0") {
+            ablation.enablePhase0 = false;
+        } else if (arg == "--no-dyn-thresh") {
+            ablation.enableDynThresh = false;
+        } else if (arg == "--no-phase2") {
+            ablation.enablePhase2 = false;
+        } else if (arg == "--no-ols") {
+            ablation.enableOLS = false;
+        } else if (arg == "--no-dr") {
+            ablation.enableDR = false;
         } else if (arg == "--profile") {
             profileMode = true;
+        } else if (arg == "--min-scores") {
+            minScoresOnly = true;
         } else if ((arg == "--historySize" || arg == "--history-size" || arg == "--history") && i + 1 < argc) {
             historySize = std::stoul(argv[++i]);
         }
     }
     
     if (dirPath.empty()) {
-        std::cerr << "Usage: " << argv[0] << " --dir <path> [--dr <model>] [--trust <model>] [--historySize <size>] [--profile]\n";
+        std::cerr << "Usage: " << argv[0] << " --dir <path> [--dr <model>] [--trust <model>] [--historySize <size>] [--profile] [--min-scores]\n";
+        std::cerr << "Ablation flags: [--no-phase0] [--no-dyn-thresh] [--no-phase2] [--no-ols] [--no-dr]\n";
         return 1;
     }
 
-    // 1. Extract and format messages
-    auto messages = ParquetMessageExtractor::extractMessages(dirPath);
-    
+    // If OLS smoothing is ablated, use bare CTRA model
+    if (!ablation.enableOLS && drModelName == "HistoryAwareCTRA") {
+        drModelName = "CTRA";
+    }
+
+    // 1. Discover all trace files
+    auto traceFiles = ParquetMessageExtractor::getTraceFiles(dirPath);
+    if (traceFiles.empty()) {
+        std::cerr << "Error: No traceJSON-*.parquet files found in " << dirPath << "\n";
+        return 1;
+    }
+
     // 2. Initialize engine
-    TrustEvaluationEngine engine(drModelName, trustModelName, params, profileMode, historySize);
+    bool engineSilent = profileMode || minScoresOnly;
+    TrustEvaluationEngine engine(drModelName, trustModelName, params, engineSilent, historySize, ablation);
 
     // 3. Process stream
     if (profileMode) {
-        std::cout << "Starting performance profiling over " << messages.size() << " messages...\n";
+        std::cout << "Loading " << traceFiles.size() << " trace files for profiling...\n";
+        std::vector<std::vector<RawMessage>> fileBatches;
+        fileBatches.reserve(traceFiles.size());
+        size_t totalMessages = 0;
+        for (const auto& fpath : traceFiles) {
+            auto msgs = ParquetMessageExtractor::extractMessagesFromFile(fpath);
+            totalMessages += msgs.size();
+            fileBatches.push_back(std::move(msgs));
+        }
+
+        std::cout << "Starting performance profiling over " << totalMessages << " messages (" << traceFiles.size() << " observer nodes)...\n";
         auto start = std::chrono::high_resolution_clock::now();
         
-        for (const auto& msg : messages) {
-            engine.processMessage(msg);
+        for (const auto& batch : fileBatches) {
+            engine.reset();
+            for (const auto& msg : batch) {
+                engine.processMessage(msg);
+            }
         }
         
         auto end = std::chrono::high_resolution_clock::now();
@@ -480,14 +415,39 @@ int main(int argc, char* argv[]) {
         std::cout << "----------------------------------------\n";
         std::cout << "PROFILING RESULTS\n";
         std::cout << "----------------------------------------\n";
+        std::cout << "Observer Files:       " << traceFiles.size() << "\n";
         std::cout << "History Size:         " << historySize << "\n";
         std::cout << "Total Execution Time: " << duration << " us\n";
-        std::cout << "Messages Processed:   " << messages.size() << "\n";
-        std::cout << "Avg Latency per Msg:  " << (double)duration / messages.size() << " us\n";
+        std::cout << "Messages Processed:   " << totalMessages << "\n";
+        std::cout << "Avg Latency per Msg:  " << (totalMessages > 0 ? (double)duration / totalMessages : 0.0) << " us\n";
+        std::cout << "Throughput:           " << (duration > 0 ? (totalMessages * 1000000.0) / duration : 0.0) << " msgs/s\n";
         std::cout << "----------------------------------------\n";
+    } else if (minScoresOnly) {
+        std::map<long, double> globalMinScores;
+        for (const auto& fpath : traceFiles) {
+            auto msgs = ParquetMessageExtractor::extractMessagesFromFile(fpath);
+            engine.reset();
+            for (const auto& msg : msgs) {
+                engine.processMessage(msg);
+            }
+            for (const auto& [sender, sc] : engine.getMinScores()) {
+                if (globalMinScores.find(sender) == globalMinScores.end() || sc < globalMinScores[sender]) {
+                    globalMinScores[sender] = sc;
+                }
+            }
+        }
+        std::cout << "sender,score\n";
+        for (const auto& [sender, sc] : globalMinScores) {
+            std::cout << sender << "," << sc << "\n";
+        }
     } else {
-        for (const auto& msg : messages) {
-            engine.processMessage(msg);
+        std::cout << "rcvTime,receiver,sender,score,distError\n";
+        for (const auto& fpath : traceFiles) {
+            auto msgs = ParquetMessageExtractor::extractMessagesFromFile(fpath);
+            engine.reset();
+            for (const auto& msg : msgs) {
+                engine.processMessage(msg);
+            }
         }
     }
 
