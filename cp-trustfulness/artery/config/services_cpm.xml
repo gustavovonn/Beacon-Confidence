@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<services>
+    <!-- CA service: honest CAM transmission/reception -->
+    <service type="artery.application.CaService" name="CA">
+        <listener port="2001" channel="180" aid="36"/>
+    </service>
+
+    <!-- CP service: CPMs are sent to BTP port 2009 (vanetza::btp::ports::CPM) -->
+    <service type="artery.envmod.service.CpService" name="CP">
+        <listener port="2009"/>
+    </service>
+
+    <!-- Positioning and perception imperfection of this station's outgoing messages -->
+    <service type="config.neds.SensorNoiseService" name="Noise">
+    </service>
+
+    <!-- Confidence of received CAM and CPM content (Paper 1 plausibility + anchoring) -->
+    <service type="config.neds.CollectiveTrustService" name="DR">
+    </service>
+</services>

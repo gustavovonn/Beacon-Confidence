@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<services>
+    <!-- Dishonest CA service: falsifies outgoing CAMs (faultMode) -->
+    <service type="config.neds.FaultyCaService" name="CA">
+        <listener port="2001" channel="180" aid="36"/>
+    </service>
+
+    <!-- Dishonest CP service: falsifies outgoing CPMs (cpmFaultMode) -->
+    <service type="config.neds.FaultyCpService" name="CP">
+        <listener port="2009"/>
+    </service>
+
+    <!-- Positioning and perception imperfection, plus an optional GNSS fault (gnssFaultMode) -->
+    <service type="config.neds.FaultySensorNoiseService" name="Noise">
+    </service>
+
+    <!-- A dishonest station also runs the trust service (its view is recorded but it may lie) -->
+    <service type="config.neds.CollectiveTrustService" name="DR">
+    </service>
+</services>

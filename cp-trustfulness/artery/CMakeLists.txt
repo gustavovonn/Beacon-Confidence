@@ -1,8 +1,13 @@
 add_artery_feature(cp_trustfulness
     ../src/DeadReckoningModels.cc
     ../src/TrustEvaluators.cc
+    ../src/AssociationEngines.cc
+    ../src/TrustEngine.cc
     src/TrustService.cc
     src/FaultyCaService.cc
+    src/FaultyCpService.cc
+    src/SensorNoiseService.cc
+    src/CollectiveTrustService.cc
 )
 
 target_include_directories(cp_trustfulness PUBLIC ../include include)

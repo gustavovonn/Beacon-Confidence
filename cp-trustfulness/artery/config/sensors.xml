@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sensors>
+	<sensor name="FrontRadar" type="artery.envmod.sensor.FrontRadar" />
+	<sensor name="RearRadar" type="artery.envmod.sensor.RearRadar" />
+</sensors>

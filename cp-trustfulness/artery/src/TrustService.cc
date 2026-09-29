@@ -121,8 +121,9 @@ static KinematicState* etsi_cam_unwrap(const vanetza::asn1::Cam& asn1_cam)
     // Extract acceleration in m/s^2 (longitudinalAcceleration is in 0.1 m/s^2)
     kinematicState->accel = hf.longitudinalAcceleration.longitudinalAccelerationValue * 0.1;
 
-    // Extract yaw rate in rad/s (yawRate is in 0.01 deg/s)
-    kinematicState->yawRate = hf.yawRate.yawRateValue * 0.01 * M_PI / 180.0;
+    // Extract yaw rate in rad/s (yawRate is in 0.01 deg/s). ETSI yaw rate is positive to the
+    // left (counter-clockwise) while headings grow clockwise, so the sign is flipped for CTRA.
+    kinematicState->yawRate = -hf.yawRate.yawRateValue * 0.01 * M_PI / 180.0;
 
     kinematicState->time = omnetpp::simTime().dbl();
 

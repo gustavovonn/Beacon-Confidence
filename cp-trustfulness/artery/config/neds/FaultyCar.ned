@@ -1,9 +1,9 @@
 package config.neds;
 
-import artery.inet.Car;
+import artery.envmod.Car;
 
 module FaultyCar extends Car {
     parameters:
         @display("t=Faulty;i=node/car,red");
-        middleware.services = xmldoc("config/faulty_services.xml");
+        middleware.services = default(xmldoc("config/faulty_services_cpm.xml"));
 }

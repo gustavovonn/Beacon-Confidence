@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Default mix; run_cpm_experiment.py writes its own mix per run. -->
 <vehicles>
-    <vehicle type="config.neds.HonestCar" rate="0.95" />
-    <vehicle type="config.neds.FaultyCar" rate="0.05" />
+    <vehicle type="config.neds.HonestCar" rate="1.00" />
+    <vehicle type="config.neds.FaultyCar" rate="0.00" />
 </vehicles>

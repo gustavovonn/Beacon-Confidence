@@ -1,0 +1,128 @@
+# =============================================================================
+# Confidence of CAM and CPM content: experiment matrix
+#
+# Every key is either a runner key (scenario, time_limit, seeds, faulty_rate, description) or a parameter listed in
+# scripts/run_cpm_experiment.py::PARAMS. Unknown keys abort the run.
+#
+# Every run yields three variants of the same messages: Paper 1 alone (P), + the receiver's radar, + peers, and
+# the component behind every flag (physics, kinematics, impossible report, CPM pose, radar).
+#
+# Faults: we reuse the FAULT MODELS of VeReMi Extension (Kamel et al., ICC 2020), as implemented in F2MD, the
+# framework that generated it (include/F2mdFaults.h), not its dataset: the dataset has no CPMs and no radar. Reusing
+# the models keeps Paper 1's eight profiles and makes the results comparable with Paper 1 and the literature that
+# uses the same taxonomy. 10 % of the vehicles are faulty for their whole trip, as in VeReMi / F2MD:
+#   position (GNSS level, CAM and CPM alike)  const_pos, const_pos_offset, random_pos, random_pos_offset
+#   speed (CAM speed field)                   const_speed, const_speed_offset, random_speed, random_speed_offset
+#   CPM objects                               ghost (attack), object_const_offset, object_random_offset
+#
+# Error models of every station (include/ErrorModels.h):
+#   GNSS          VeReMi Extension error model (Kamel et al., ICC 2020)
+#   radar noise   Jacobs et al. (VTC2023-Spring)
+#   field of view ITU-R M.2057-1 Radar B (100 m, +-25 deg), front and rear; detection by Artery's FoV sensor
+#
+# Threat model: one faulty or malicious station at a time behaves independently (VeReMi / F2MD); collusion,
+# Sybil identities and omission attacks are future work.
+# =============================================================================
+
+defaults:
+  scenario: "grid"
+  time_limit: "60s"
+  seeds: [1, 2, 3]
+  faulty_rate: 0.10
+  gnss_error_model: "veremi"
+  radar_error_model: "jacobs"
+  gnss_fault_profile: "none"
+  gnss_fault_start_time: 0.0
+  fault_profile: "none"
+  fault_start_time: 0.0
+  cpm_fault_profile: "none"
+  cpm_fault_start_time: 0.0
+  cpm_fault_magnitude: 20.0
+
+# ── Honest traffic: false-positive floor and anchoring coverage ───────────────
+honest:
+  - id: honest
+    description: "No faulty station; referenced GNSS and radar errors"
+    faulty_rate: 0.0
+
+# ── Paper 1's eight fault profiles (VeReMi Extension fault models, F2MD parameters) ─
+position_faults:
+  - id: const_pos
+    gnss_fault_profile: "const_pos"
+  - id: const_pos_offset
+    description: "Paper 1's blind spot (F1 0.019)"
+    gnss_fault_profile: "const_pos_offset"
+  - id: random_pos
+    gnss_fault_profile: "random_pos"
+  - id: random_pos_offset
+    gnss_fault_profile: "random_pos_offset"
+
+speed_faults:
+  - id: const_speed
+    fault_profile: "const_speed"
+  - id: const_speed_offset
+    fault_profile: "const_speed_offset"
+  - id: random_speed
+    fault_profile: "random_speed"
+  - id: random_speed_offset
+    fault_profile: "random_speed_offset"
+
+# ── CPM content ──────────────────────────────────────────────────────────────
+cpm_faults:
+  - id: ghost
+    description: "A moving ghost vehicle 20 m ahead of the attacker"
+    cpm_fault_profile: "ghost"
+  - id: object_const_offset
+    cpm_fault_profile: "object_const_offset"
+  - id: object_random_offset
+    cpm_fault_profile: "object_random_offset"
+
+# ── Component ablations: what each check contributes (radar and peers are separated inside every run) ──
+ablations:
+  - id: ghost_no_admissibility
+    cpm_fault_profile: "ghost"
+    enable_admissibility: false
+  - id: ghost_no_object_kinematics
+    cpm_fault_profile: "ghost"
+    enable_object_kinematics: false
+  - id: object_const_offset_no_object_kinematics
+    cpm_fault_profile: "object_const_offset"
+    enable_object_kinematics: false
+  - id: object_random_offset_no_object_kinematics
+    cpm_fault_profile: "object_random_offset"
+    enable_object_kinematics: false
+  - id: honest_no_object_kinematics
+    description: "What Paper 1 on object tracks costs in false positives"
+    faulty_rate: 0.0
+    enable_object_kinematics: false
+
+# ── Coverage study: does detection follow the share of claims the receiver's radar can judge? (seed 1) ──
+# sensor_setup: front (1 x ITU Radar B, 50 deg), front_rear (default, 100 deg), surround (+ 2 x ITU Radar C, 220 deg)
+coverage:
+  - id: front_honest
+    sensor_setup: "front"
+    faulty_rate: 0.0
+  - id: front_const_pos_offset
+    sensor_setup: "front"
+    gnss_fault_profile: "const_pos_offset"
+  - id: front_ghost
+    sensor_setup: "front"
+    cpm_fault_profile: "ghost"
+  - id: front_rear_honest
+    sensor_setup: "front_rear"
+    faulty_rate: 0.0
+  - id: front_rear_const_pos_offset
+    sensor_setup: "front_rear"
+    gnss_fault_profile: "const_pos_offset"
+  - id: front_rear_ghost
+    sensor_setup: "front_rear"
+    cpm_fault_profile: "ghost"
+  - id: surround_honest
+    sensor_setup: "surround"
+    faulty_rate: 0.0
+  - id: surround_const_pos_offset
+    sensor_setup: "surround"
+    gnss_fault_profile: "const_pos_offset"
+  - id: surround_ghost
+    sensor_setup: "surround"
+    cpm_fault_profile: "ghost"
