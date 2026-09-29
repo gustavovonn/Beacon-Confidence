@@ -8,11 +8,10 @@
  *                 perceived object of one CPM author (author, CPM object id).
  *   Plausibility  P, Paper 1's counterless Beta score of the track (physical invariance + CTRA prediction).
  *   Anchoring     A, the same filter fed only by sources the author does not control: the receiver's own
- *                 radar confirms or contradicts; other authors confirm with statements on the same LDM track, and
- *                 contradict a CAM claim with their silence where their radars covered it (at least two).
+ *                 radar confirms or contradicts; other authors only confirm, with statements on the same LDM track.
  *   State         what one message is worth to an application:
  *                   implausible   P < 0.5         Paper 1 rejects it
- *                   contradicted  A < 0.4         the receiver's radar, or the silence of covering authors, denies it
+ *                   contradicted  A < 0.4         the receiver's radar denies it
  *                   anchored      A >= 0.58       plausible and confirmed by an independent sensor
  *                   unanchored    otherwise       plausible, but nothing independent could check it
  */
@@ -30,7 +29,7 @@ enum class Verdict { Supported, Contradicted, Unverifiable };
 enum class ClaimState { Anchored, Unanchored, Contradicted, Implausible };
 
 /// Which component a state is owed to (for attribution): the last penalty of P, or the receiver's radar.
-enum class Reason { None, Physics, Kinematics, Impossible, Pose, Radar, Silence };
+enum class Reason { None, Physics, Kinematics, Impossible, Pose, Radar };
 
 /**
  * Paper 1's counterless Beta update (Sec. IV-B): pseudo-counts are rebuilt from the previous score with a fixed
@@ -68,7 +67,6 @@ inline const char* toString(Reason reason)
         case Reason::Impossible: return "impossible";   // an object report that cannot be physical
         case Reason::Pose:       return "pose";         // CPM reference pose vs the author's CAM track
         case Reason::Radar:      return "radar";        // the receiver's radar contradicts
-        case Reason::Silence:    return "silence";      // other authors covered the claimed position and saw nothing
     }
     return "unknown";
 }

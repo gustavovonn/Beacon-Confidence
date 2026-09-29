@@ -58,7 +58,6 @@ TrustEngineParams CollectiveTrustService::readParams()
     p.enablePoseCheck = par("enablePoseCheck").boolValue();
     p.enableAdmissibility = par("enableAdmissibility").boolValue();
     p.enableObjectKinematics = par("enableObjectKinematics").boolValue();
-    p.enableSilence = par("enableSilence").boolValue();
     // Paper 1, unchanged
     p.kinematics.maxPosDev = par("maxPositionDeviation").doubleValue();
     p.kinematics.contextSpeedWeight = par("contextSpeedWeight").doubleValue();

@@ -113,7 +113,7 @@ void TrustEngine::plausibilityStep(std::deque<KinematicState>& history, Scores& 
 // ----------------------------------------------------------------------------
 // Anchoring: the same counterless filter. The radar decides where it can; elsewhere peers can only confirm.
 // ----------------------------------------------------------------------------
-void TrustEngine::anchoringStep(Scores& scores, Verdict ego, int peers, bool silence)
+void TrustEngine::anchoringStep(Scores& scores, Verdict ego, int peers)
 {
     const double w = m_params.kinematics.priorWeight > 0.0 ? m_params.kinematics.priorWeight
                                                            : ConstantsPhysics::DEFAULT_PRIOR_WEIGHT;
@@ -126,13 +126,8 @@ void TrustEngine::anchoringStep(Scores& scores, Verdict ego, int peers, bool sil
         scores.lastContradiction = Reason::Radar;
     }
     scores.anchoringEgo = counterlessUpdate(scores.anchoringEgo, support, contradiction, w);
-    if (ego == Verdict::Unverifiable && m_params.enablePeers) {
-        if (peers > 0) {
-            support = std::min(m_params.anchorSupport, m_params.peerSupport * peers);
-        } else if (silence) {
-            contradiction = m_params.anchorPenalty;
-            scores.lastContradiction = Reason::Silence;
-        }
+    if (ego == Verdict::Unverifiable && m_params.enablePeers && peers > 0) {
+        support = std::min(m_params.anchorSupport, m_params.peerSupport * peers);
     }
     scores.anchoring = counterlessUpdate(scores.anchoring, support, contradiction, w);
 }
@@ -268,17 +263,7 @@ void TrustEngine::onCam(const CamClaim& claim, const EgoView& ego, const IOcclus
                           ? m_ldm.independentSources(body, {claim.author, ego.station}, now - m_params.inclusionPeriod,
                                                      now + 0.05)
                           : 0;
-    // An unanchored CAM claim: did other authors cover the claimed position and report nothing there? Evaluated at
-    // most once per inclusion period; its verdict holds for the messages in between.
-    bool silence = false;
-    if (m_params.enableSilence && m_params.enablePeers && seen == Verdict::Unverifiable && peers == 0) {
-        if (now - scores.silenceCheckedAt >= m_params.inclusionPeriod) {
-            scores.silence = silentAuthors(claim, body, ego, statics, now) >= m_params.minSilentAuthors;
-            scores.silenceCheckedAt = now;
-        }
-        silence = scores.silence;
-    }
-    anchoringStep(scores, seen, peers, silence);
+    anchoringStep(scores, seen, peers);
     report(ClaimKind::Cam, claim.author, 0, body, now, scores, seen, peers);
 }
 
@@ -333,7 +318,6 @@ CpmOutcome TrustEngine::onCpm(const CpmSnapshot& cpm, const EgoView& ego, const 
     addEgoToMap(ego);
     const StationId author = cpm.author;
     const GeoPoint authorCentre = centreFromReference(cpm.referencePosition, cpm.heading, author);
-    m_ldm.addCpm(CpmRecord{author, cpm.time, authorCentre, cpm.heading});
     PhysicalInvarianceResult poseResult;
     const PhysicalInvarianceResult* poseViolation =
         m_params.enablePoseCheck ? poseCheck(cpm, authorCentre, poseResult) : nullptr;
@@ -433,72 +417,6 @@ CpmOutcome TrustEngine::onCpm(const CpmSnapshot& cpm, const EgoView& ego, const 
         report(ClaimKind::Object, author, o.objectId, track, now, t.scores, seen, peers);
     }
     return outcome;
-}
-
-// ----------------------------------------------------------------------------
-// Missing confirmation: authors whose radars covered the claimed position throughout the last inclusion period, with
-// a clear line of sight, and who reported nothing there. Every object known to the LDM may block their view (a liar's
-// own claims can only make its lie harder to judge, never frame someone), so silence is counted conservatively.
-// ----------------------------------------------------------------------------
-int TrustEngine::silentAuthors(const CamClaim& claim, uint64_t body, const EgoView& ego, const IOcclusionModel& statics,
-                               double now) const
-{
-    const KinematicState& c = claim.state;
-    const GeoPoint p = positionOf(c);
-    const double t0 = now - m_params.inclusionPeriod - 0.1;
-    const double t1 = now + 0.05;
-    int silent = 0;
-    for (StationId author : m_ldm.authors()) {
-        if (author == claim.author || author == ego.station) {
-            continue;
-        }
-        bool coveredThroughout = true;
-        double first = std::numeric_limits<double>::infinity();
-        double last = -std::numeric_limits<double>::infinity();
-        double range = 0.0;
-        m_ldm.forEachCpm(author, t0, t1, [&](const CpmRecord& r) {
-            if (!coveredThroughout) {
-                return;
-            }
-            const GeoPoint q = Geodesy::project(p, c.speed, c.heading, r.time - c.time);
-            range = Geodesy::distance(r.centre, q);
-            // claimer's GNSS + author's GNSS + author's radar
-            const double g = gate(2.0, m_params.radar.positionVariance(range));
-            if (!m_params.coverage.coversDisc(r.centre, r.heading, q, g) || peerLineBlocked(r.centre, q, r.time, statics)) {
-                coveredThroughout = false;
-                return;
-            }
-            first = std::min(first, r.time);
-            last = std::max(last, r.time);
-        });
-        if (!coveredThroughout || !(last - first + 1e-6 >= 0.9 * m_params.inclusionPeriod)) {
-            continue;
-        }
-        if (!m_ldm.reported(author, body, p, c.time, c.speed, c.heading, t0, t1,
-                            gate(2.0, m_params.radar.positionVariance(range)))) {
-            ++silent;
-        }
-    }
-    return silent;
-}
-
-bool TrustEngine::peerLineBlocked(const GeoPoint& from, const GeoPoint& to, double time,
-                                  const IOcclusionModel& statics) const
-{
-    if (statics.blocked(from, to)) {
-        return true;
-    }
-    auto toPlanar = [&](const GeoPoint& q) {
-        const LocalPoint d = Geodesy::toLocal(from, q);
-        return Planar::Vec2{d.east, d.north};
-    };
-    const Planar::Vec2 a{0.0, 0.0};
-    const Planar::Vec2 b = toPlanar(to);
-    bool hit = false;
-    m_ldm.forEachTrackAt(time, 0.5, [&](uint64_t, const GeoPoint& q) {
-        hit = hit || Planar::segmentHitsDisc(a, b, toPlanar(q), m_params.occluderRadius);
-    });
-    return hit;
 }
 
 void TrustEngine::tick(const EgoView& ego)

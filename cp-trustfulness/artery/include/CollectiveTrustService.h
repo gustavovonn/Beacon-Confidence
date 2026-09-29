@@ -62,7 +62,7 @@ private:
         uint64_t egoSupported = 0;
         uint64_t egoContradicted = 0;
         uint64_t peerConfirmed = 0;   ///< the radar could not judge and independent authors confirmed
-        std::array<uint64_t, 7> reason{};  ///< flagged (full) messages by the component behind the flag (Reason)
+        std::array<uint64_t, 6> reason{};  ///< flagged (full) messages by the component behind the flag (Reason)
     };
 
     TrustEngineParams readParams();

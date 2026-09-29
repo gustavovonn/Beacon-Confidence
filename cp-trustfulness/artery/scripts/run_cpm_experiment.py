@@ -80,7 +80,6 @@ PARAMS = {
     "enable_pose_check":        ("DR", "enablePoseCheck", "bool"),
     "enable_admissibility":     ("DR", "enableAdmissibility", "bool"),
     "enable_object_kinematics": ("DR", "enableObjectKinematics", "bool"),
-    "enable_silence":           ("DR", "enableSilence", "bool"),
     # Paper 1
     "dr_model":               ("DR", "drAlgorithm", "str"),
     "history_size":           ("DR", "historySize", "num"),
@@ -103,7 +102,7 @@ PARAMS = {
 }
 
 KINDS = ("cam", "object")
-REASONS = ("physics", "kinematics", "impossible", "pose", "radar", "silence")  # which component a flag is owed to
+REASONS = ("physics", "kinematics", "impossible", "pose", "radar")  # which component a flag is owed to
 VARIANTS = (("p1", "flagged_p1"), ("ego", "flagged_ego"), ("", "flagged"))
 
 

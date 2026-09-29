@@ -29,7 +29,6 @@ struct TrustEngineParams {
     bool enablePoseCheck = true;         ///< CPM reference pose vs the author's CAM track
     bool enableAdmissibility = true;     ///< object reports that cannot be physical
     bool enableObjectKinematics = true;  ///< Paper 1 on perceived-object tracks
-    bool enableSilence = true;           ///< missing confirmation of an unanchored CAM claim is evidence against it
 
     // ── Plausibility: Paper 1, unchanged (thresholds, penalty policy, prior weight) ──
     TrustEvaluationParams kinematics;
@@ -43,10 +42,7 @@ struct TrustEngineParams {
     /// the receiver's radar contradicts: 4 is the smallest whole penalty for which two consecutive contradictions
     /// flag a steadily anchored claim (0.667 -> 0.479 -> 0.362) and one does not (Paper 1's K = 2 policy)
     double anchorPenalty = 4.0;
-    double inclusionPeriod = 1.0;  ///< [s] an honest author re-reports a tracked object at least this often
-    /// Silent authors needed to contradict an unanchored CAM claim: more than one, so that one faulty author (whose
-    /// radars or reported pose are wrong) cannot flag anyone; faults are independent (VeReMi / F2MD threat model).
-    int minSilentAuthors = 2;
+    double inclusionPeriod = 1.0;  ///< [s] window in which other authors' reports of the same object confirm a claim
 
     // ── States ──
     double implausibleBelow = 0.5;   ///< Paper 1's eviction threshold on P
@@ -139,9 +135,7 @@ private:
         double lastSeen = -1.0;
         Reason lastPenalty = Reason::None;  ///< what last lowered P
         Reason penaltyNow = Reason::None;   ///< what lowered P in the current message
-        Reason lastContradiction = Reason::None;  ///< what last lowered A (radar or silence)
-        double silenceCheckedAt = -1e9;     ///< the silence test runs at most once per inclusion period
-        bool silence = false;               ///< its last verdict
+        Reason lastContradiction = Reason::None;  ///< what last lowered A (the receiver's radar)
     };
     struct ObjectTrack {
         std::deque<KinematicState> history;
@@ -154,10 +148,7 @@ private:
     void plausibilityStep(std::deque<KinematicState>& history, Scores& scores, const KinematicState& state,
                           const PhysicalInvarianceResult* violation, bool keep = true, double noiseVariance = 0.0,
                           Reason violationReason = Reason::Impossible);
-    void anchoringStep(Scores& scores, Verdict ego, int peers, bool silence = false);
-    int silentAuthors(const CamClaim& claim, uint64_t body, const EgoView& ego, const IOcclusionModel& statics,
-                      double now) const;
-    bool peerLineBlocked(const GeoPoint& from, const GeoPoint& to, double time, const IOcclusionModel& statics) const;
+    void anchoringStep(Scores& scores, Verdict ego, int peers);
     ClaimState classify(double plausibility, double anchoring) const;
     Reason reasonFor(ClaimState state, const Scores& s) const;
     void report(ClaimKind kind, StationId author, uint16_t objectId, uint64_t track, double now, const Scores& s,

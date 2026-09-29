@@ -7,6 +7,10 @@
 # Every run yields three variants of the same messages: Paper 1 alone (P), + the receiver's radar, + peers, and
 # the component behind every flag (physics, kinematics, impossible report, CPM pose, radar).
 #
+# Scenario: LuST (config [Config lust]) at 07:30, only the vehicles inside a 1.61 km² square (the size of VeReMi
+# Extension's LuST area, at its density). Prepare once inside the container: bash config/lust/make_state.sh.
+# Run with --jobs 3 at most.
+#
 # Faults: we reuse the FAULT MODELS of VeReMi Extension (Kamel et al., ICC 2020), as implemented in F2MD, the
 # framework that generated it (include/F2mdFaults.h), not its dataset: the dataset has no CPMs and no radar. Reusing
 # the models keeps Paper 1's eight profiles and makes the results comparable with Paper 1 and the literature that
@@ -25,9 +29,9 @@
 # =============================================================================
 
 defaults:
-  scenario: "grid"
+  scenario: "lust"
   time_limit: "60s"
-  seeds: [1, 2, 3]
+  seeds: [1]
   faulty_rate: 0.10
   gnss_error_model: "veremi"
   radar_error_model: "jacobs"
@@ -96,7 +100,7 @@ ablations:
     faulty_rate: 0.0
     enable_object_kinematics: false
 
-# ── Coverage study: does detection follow the share of claims the receiver's radar can judge? (seed 1) ──
+# ── Coverage study: does detection follow the share of claims the receiver's radar can judge? ──
 # sensor_setup: front (1 x ITU Radar B, 50 deg), front_rear (default, 100 deg), surround (+ 2 x ITU Radar C, 220 deg)
 coverage:
   - id: front_honest
@@ -126,3 +130,4 @@ coverage:
   - id: surround_ghost
     sensor_setup: "surround"
     cpm_fault_profile: "ghost"
+

@@ -474,17 +474,14 @@ void testPeersOnlyConfirm()
     CHECK(lonely.last().state == ClaimState::Unanchored);
 }
 
-/// Blocks every line of sight.
-struct Blind : IOcclusionModel {
-    bool blocked(const GeoPoint&, const GeoPoint&) const override { return true; }
-};
-
-// Missing confirmation: car 7 claims to be parked abeam of the receiver (out of its view). Authors 20 and 21, 40 m
-// south and north of the claimed spot and facing it, send CPMs that do not contain it.
-struct SilenceRun {
+// Other authors only confirm: car 7 claims to be parked abeam of the receiver (out of its view). Authors 20 and 21,
+// 40 m south and north of the claimed spot and facing it, send CPMs that do not contain it; their silence is no
+// evidence, so no group of vehicles can lower the confidence of another.
+struct PeerRun {
     Scenario s;
-    void run(bool secondAuthor, bool reportIt, const IOcclusionModel& statics)
+    void run(bool reportIt)
     {
+        NoOcclusion clear;
         const GeoPoint p7 = at(40.0, 0.0);
         for (int k = 0; k < 7; ++k) {
             const double t = 0.3 * k;
@@ -492,38 +489,27 @@ struct SilenceRun {
             const std::vector<ObjectClaim> none;
             s.engine->onCpm(cpmFrom(20, at(40.0, -40.0), 0.0, t,
                                     reportIt ? std::vector<ObjectClaim>{object(20, 3, p7, 0.0, 0.0, t)} : none),
-                            s.ego, statics);
-            if (secondAuthor) {
-                s.engine->onCpm(cpmFrom(21, at(40.0, 40.0), 180.0, t, none), s.ego, statics);
-            }
-            s.engine->onCam(cam(7, p7, 0.0, 0.0, t), s.ego, statics);
+                            s.ego, clear);
+            s.engine->onCpm(cpmFrom(21, at(40.0, 40.0), 180.0, t, none), s.ego, clear);
+            s.engine->onCam(cam(7, p7, 0.0, 0.0, t), s.ego, clear);
         }
     }
     const ClaimResult& last() const { return *s.lastOf(7, ClaimKind::Cam); }
 };
 
-void testMissingConfirmation()
+void testSilenceIsNoEvidence()
 {
-    NoOcclusion clear;
-    SilenceRun both;
-    both.run(true, false, clear);
-    CHECK(both.last().egoVerdict == Verdict::Unverifiable);
-    CHECK(both.last().state == ClaimState::Contradicted);
-    CHECK(both.last().reason == Reason::Silence);
-    CHECK(both.last().stateEgo == ClaimState::Unanchored);  // the radar-only variant never uses silence
+    PeerRun silent;
+    silent.run(false);
+    CHECK(silent.last().egoVerdict == Verdict::Unverifiable);
+    CHECK(silent.last().state == ClaimState::Unanchored);
 
-    SilenceRun one;  // a single silent author is not enough
-    one.run(false, false, clear);
-    CHECK(one.last().state == ClaimState::Unanchored);
+    CHECK(silent.last().anchoring >= silent.last().anchoringEgo);  // silence never lowers A below the radar-only A
 
-    SilenceRun reported;  // author 20 reports the spot: not silent (it even confirms)
-    reported.run(true, true, clear);
-    CHECK(reported.last().state != ClaimState::Contradicted);
-
-    Blind blind;
-    SilenceRun hidden;  // the authors could not see the spot: no evidence
-    hidden.run(true, false, blind);
-    CHECK(hidden.last().state == ClaimState::Unanchored);
+    PeerRun reported;  // author 20 reports the spot: it confirms (testPeersOnlyConfirm shows it anchoring)
+    reported.run(true);
+    CHECK(reported.last().peers >= 1);
+    CHECK(reported.last().anchoring > silent.last().anchoring);
 }
 
 // Objects: a ghost in view is contradicted, a real object confirmed, an object at the receiver is supported.
@@ -641,7 +627,7 @@ int main()
         {"constant offset contradicted", testConstantOffsetContradicted},
         {"unverifiable where the radar is unsure", testUnverifiableWhereRadarIsUnsure},
         {"peers confirm", testPeersOnlyConfirm},
-        {"missing confirmation (two silent covering authors)", testMissingConfirmation},
+        {"silent authors are no evidence", testSilenceIsNoEvidence},
         {"objects", testObjects},
         {"object admissibility", testObjectAdmissibility},
         {"CPM pose against CAM", testCpmPoseAgainstCam},

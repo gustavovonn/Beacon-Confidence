@@ -48,9 +48,9 @@ To add a configuration, add an item to a block (or a new block):
 
 ```yaml
 my_block:
-  - id: offset_without_silence
+  - id: offset_without_peers
     gnss_fault_profile: "const_pos_offset"
-    enable_silence: false
+    enable_peers: false
 ```
 
 and run it with `--block my_block`. The keys you can use are listed in `PARAMS` at the top of
@@ -64,7 +64,7 @@ and run it with `--block my_block`. The keys you can use are listed in `PARAMS` 
 | `fault_profile` | `none`, `const_speed`, `const_speed_offset`, `random_speed`, `random_speed_offset` |
 | `cpm_fault_profile` | `none`, `ghost`, `object_const_offset`, `object_random_offset` |
 | `sensor_setup` | `front`, `front_rear` (default), `surround` |
-| `enable_radar`, `enable_peers`, `enable_silence`, `enable_admissibility`, `enable_object_kinematics`, `enable_pose_check` | `true` / `false` (component ablations) |
+| `enable_radar`, `enable_peers`, `enable_admissibility`, `enable_object_kinematics`, `enable_pose_check` | `true` / `false` (component ablations) |
 | `gnss_error_model`, `radar_error_model` | `veremi` / `none`, `jacobs` / `none` |
 
 Default values of every parameter, with their sources, are in `config/neds/CollectiveTrustService.ned` (the receiver)

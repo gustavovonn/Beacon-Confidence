@@ -5,30 +5,14 @@
 #include "Geodesy.h"
 #include <cmath>
 #include <deque>
-#include <limits>
 #include <map>
 #include <set>
 #include <tuple>
-#include <vector>
 
 namespace artery {
 
 /// Who made a statement about a track.
 enum class SourceKind { Ego, Cam, Cpm };
-
-/// When and from where an author sent a CPM (where its radars looked).
-struct CpmRecord {
-    StationId author = 0;
-    double time = 0.0;
-    GeoPoint centre;
-    double heading = 0.0;
-};
-
-/// A CPM object statement indexed by its author (what the author said, wherever it landed).
-struct LdmAuthorEntry {
-    uint64_t track = 0;
-    ObjectClaim claim;
-};
 
 /// One statement about a track, kept with its source (provenance). Nothing is fused away.
 struct LdmContribution {
@@ -165,75 +149,6 @@ public:
         return static_cast<int>(sources.size());
     }
 
-    /// Where and when an author sent a CPM (what its radars covered).
-    void addCpm(const CpmRecord& record) { m_cpms[record.author].push_back(record); }
-
-    /// Authors with a CPM in the retention window.
-    std::vector<StationId> authors() const
-    {
-        std::vector<StationId> ids;
-        for (const auto& entry : m_cpms) {
-            if (!entry.second.empty()) {
-                ids.push_back(entry.first);
-            }
-        }
-        return ids;
-    }
-
-    /// Calls f(const CpmRecord&) for every CPM `author` sent during [t0, t1].
-    template <typename F>
-    void forEachCpm(StationId author, double t0, double t1, F&& f) const
-    {
-        auto it = m_cpms.find(author);
-        if (it == m_cpms.end()) {
-            return;
-        }
-        for (const CpmRecord& r : it->second) {
-            if (r.time >= t0 && r.time <= t1) {
-                f(r);
-            }
-        }
-    }
-
-    /**
-     * Did `author` report the object during [t0, t1]: a statement on `track`, or any statement within `gate` of p
-     * (p known at `time`, projected with its speed and heading to each statement's time)? The second test is a safety
-     * net for association misses: silence is only silence if the author said nothing near the spot.
-     */
-    bool reported(StationId author, uint64_t track, const GeoPoint& p, double time, double speed, double heading,
-                  double t0, double t1, double gate) const
-    {
-        auto it = m_byAuthor.find(author);
-        if (it == m_byAuthor.end()) {
-            return false;
-        }
-        for (const LdmAuthorEntry& e : it->second) {
-            if (e.claim.time < t0 || e.claim.time > t1) {
-                continue;
-            }
-            if (track && e.track == track) {
-                return true;
-            }
-            const GeoPoint aligned = Geodesy::project(p, speed, heading, e.claim.time - time);
-            if (Geodesy::distance(aligned, e.claim.position) <= gate) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /// Calls f(trackId, position at `time`) for every track with a statement within `window` of `time`.
-    template <typename F>
-    void forEachTrackAt(double time, double window, F&& f) const
-    {
-        for (const auto& entry : m_tracks) {
-            const LdmContribution& latest = entry.second.latest;
-            if (std::abs(latest.claim.time - time) <= window) {
-                f(entry.first, positionAt(latest, time));
-            }
-        }
-    }
-
     size_t size() const { return m_tracks.size(); }
 
     void evict(double now)
@@ -250,20 +165,6 @@ public:
         }
         for (auto it = m_bodies.begin(); it != m_bodies.end();) {
             it = m_tracks.count(it->second) ? std::next(it) : m_bodies.erase(it);
-        }
-        for (auto it = m_byAuthor.begin(); it != m_byAuthor.end();) {
-            auto& queue = it->second;
-            while (!queue.empty() && now - queue.front().claim.time > m_retention) {
-                queue.pop_front();
-            }
-            it = queue.empty() ? m_byAuthor.erase(it) : std::next(it);
-        }
-        for (auto it = m_cpms.begin(); it != m_cpms.end();) {
-            auto& queue = it->second;
-            while (!queue.empty() && now - queue.front().time > m_retention) {
-                queue.pop_front();
-            }
-            it = queue.empty() ? m_cpms.erase(it) : std::next(it);
         }
     }
 
@@ -292,9 +193,6 @@ private:
             t.lastUpdate = c.claim.time;
         }
         t.lastBy[{static_cast<int>(c.kind), c.station}] = c.claim.time;
-        if (c.kind == SourceKind::Cpm) {
-            m_byAuthor[c.station].push_back(LdmAuthorEntry{id, c.claim});
-        }
     }
 
     uint64_t continuing(const ContinuityKey& key, const GeoPoint& p, double time, double gate) const
@@ -343,8 +241,6 @@ private:
     std::map<uint64_t, LdmTrack> m_tracks;
     std::map<ContinuityKey, uint64_t> m_continuity;
     std::map<StationId, uint64_t> m_bodies;
-    std::map<StationId, std::deque<CpmRecord>> m_cpms;
-    std::map<StationId, std::deque<LdmAuthorEntry>> m_byAuthor;
 };
 
 }  // namespace artery

@@ -19,8 +19,6 @@ simple CollectiveTrustService like ItsG5Service
         bool enablePoseCheck = default(true);         // CPM reference pose vs the author's CAM track
         bool enableAdmissibility = default(true);     // object reports that cannot be physical
         bool enableObjectKinematics = default(true);  // Paper 1 on perceived-object tracks
-        bool enableSilence = default(true);           // two covering authors that report nothing contradict an
-                                                      // unanchored CAM claim (at most one test per second and sender)
 
         // ── Plausibility: Paper 1, unchanged (values fitted in Paper 1 on VeReMi Extension) ──
         string drAlgorithm = default("HistoryAwareCTRA");
@@ -36,7 +34,7 @@ simple CollectiveTrustService like ItsG5Service
         double anchorSupport = default(1.0);           // own radar confirms (Paper 1's reward)
         double peerSupport = default(0.5);             // per independent author, at most anchorSupport
         double anchorPenalty = default(4.0);           // own radar contradicts: two contradictions flag an anchored claim
-        double inclusionPeriod @unit(s) = default(1s); // honest authors re-report tracked objects at least this often
+        double inclusionPeriod @unit(s) = default(1s); // window in which other authors' reports of the same object confirm
 
         // ── States of a message ──
         double implausibleBelow = default(0.5);        // on P (Paper 1)
