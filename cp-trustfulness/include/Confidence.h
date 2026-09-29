@@ -2,18 +2,17 @@
 #define CONFIDENCE_H_
 
 /**
- * Vocabulary of the confidence model: Paper 1 applied to CAM and CPM content, plus exteroceptive anchors.
+ * Vocabulary of the confidence model: Paper 1 applied to CAM and CPM content, plus corroboration by other authors.
  *
  *   Claim track   what successive messages say about one thing: a CAM sender's own trajectory, or one
  *                 perceived object of one CPM author (author, CPM object id).
  *   Plausibility  P, Paper 1's counterless Beta score of the track (physical invariance + CTRA prediction).
- *   Anchoring     A, the same filter fed only by sources the author does not control: the receiver's own
- *                 radar confirms or contradicts; other authors only confirm, with statements on the same LDM track.
+ *   Corroboration C, the same filter fed only by other authors whose statements land on the same LDM track. It
+ *                 only confirms: silence is no evidence, so no vehicle can lower the confidence of another.
  *   State         what one message is worth to an application:
- *                   implausible   P < 0.5         Paper 1 rejects it
- *                   contradicted  A < 0.4         the receiver's radar denies it
- *                   anchored      A >= 0.58       plausible and confirmed by an independent sensor
- *                   unanchored    otherwise       plausible, but nothing independent could check it
+ *                   implausible     P < 0.5       Paper 1 rejects it
+ *                   corroborated    C >= 0.58     plausible and confirmed by other authors
+ *                   uncorroborated  otherwise     plausible, but no one else reported it
  */
 
 #include <cstdint>
@@ -24,17 +23,15 @@ using StationId = long;
 
 enum class ClaimKind { Cam, Object };
 
-enum class Verdict { Supported, Contradicted, Unverifiable };
+enum class ClaimState { Corroborated, Uncorroborated, Implausible };
 
-enum class ClaimState { Anchored, Unanchored, Contradicted, Implausible };
-
-/// Which component a state is owed to (for attribution): the last penalty of P, or the receiver's radar.
-enum class Reason { None, Physics, Kinematics, Impossible, Pose, Radar };
+/// Which component an implausible state is owed to (for attribution): the last penalty of P.
+enum class Reason { None, Physics, Kinematics, Impossible, Pose };
 
 /**
  * Paper 1's counterless Beta update (Sec. IV-B): pseudo-counts are rebuilt from the previous score with a fixed
  * prior weight, the evidence is added, and the posterior mean is the new score. With no evidence the score
- * drifts back towards 0.5, so anchoring expires when nothing independent confirms a claim any more.
+ * drifts back towards 0.5, so corroboration expires when no one confirms a claim any more.
  */
 inline double counterlessUpdate(double score, double support, double contradiction, double priorWeight)
 {
@@ -48,16 +45,6 @@ inline const char* toString(ClaimKind kind)
     return kind == ClaimKind::Cam ? "cam" : "object";
 }
 
-inline const char* toString(Verdict verdict)
-{
-    switch (verdict) {
-        case Verdict::Supported:    return "supported";
-        case Verdict::Contradicted: return "contradicted";
-        case Verdict::Unverifiable: return "unverifiable";
-    }
-    return "unknown";
-}
-
 inline const char* toString(Reason reason)
 {
     switch (reason) {
@@ -66,7 +53,6 @@ inline const char* toString(Reason reason)
         case Reason::Kinematics: return "kinematics";   // Paper 1 phase 1 (OLS-CTRA prediction)
         case Reason::Impossible: return "impossible";   // an object report that cannot be physical
         case Reason::Pose:       return "pose";         // CPM reference pose vs the author's CAM track
-        case Reason::Radar:      return "radar";        // the receiver's radar contradicts
     }
     return "unknown";
 }
@@ -74,10 +60,9 @@ inline const char* toString(Reason reason)
 inline const char* toString(ClaimState state)
 {
     switch (state) {
-        case ClaimState::Anchored:     return "anchored";
-        case ClaimState::Unanchored:   return "unanchored";
-        case ClaimState::Contradicted: return "contradicted";
-        case ClaimState::Implausible:  return "implausible";
+        case ClaimState::Corroborated:   return "corroborated";
+        case ClaimState::Uncorroborated: return "uncorroborated";
+        case ClaimState::Implausible:    return "implausible";
     }
     return "unknown";
 }

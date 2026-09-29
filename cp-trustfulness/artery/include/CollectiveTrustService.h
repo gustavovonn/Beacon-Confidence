@@ -16,8 +16,6 @@ namespace traci { class VehicleController; }
 namespace artery
 {
 
-class LocalEnvironmentModel;
-class GlobalEnvironmentModel;
 class IdentityRegistry;
 class SensorNoiseService;
 class Timer;
@@ -26,8 +24,8 @@ class VehicleDataProvider;
 /**
  * @brief Artery adapter of the confidence engine.
  *
- * Parses received CAMs and CPMs into claims, builds the receiver's own view (pose and radar detections, with the
- * station's referenced GNSS and radar errors from SensorNoiseService) and feeds both to TrustEngine. It also scores
+ * Parses received CAMs and CPMs into claims, builds the receiver's own pose (with the station's referenced GNSS
+ * error from SensorNoiseService) and feeds both to TrustEngine. It also scores
  * every attributed confidence against simulator ground truth, which the engine never sees.
  */
 class CollectiveTrustService : public ItsG5BaseService
@@ -53,16 +51,10 @@ private:
     /// Per-message outcome counters: [kind][falsified] (honest receivers, after the warm-up).
     struct Outcomes {
         uint64_t n = 0;
-        uint64_t flaggedP1 = 0;       ///< Paper 1 alone: P < 0.5
-        uint64_t flaggedEgo = 0;      ///< + own radar: implausible or contradicted (radar-only A)
-        uint64_t flagged = 0;         ///< + peers: implausible or contradicted
-        uint64_t anchoredEgo = 0;
-        uint64_t anchored = 0;
-        uint64_t contradicted = 0;    ///< state contradicted (full)
-        uint64_t egoSupported = 0;
-        uint64_t egoContradicted = 0;
-        uint64_t peerConfirmed = 0;   ///< the radar could not judge and independent authors confirmed
-        std::array<uint64_t, 6> reason{};  ///< flagged (full) messages by the component behind the flag (Reason)
+        uint64_t flagged = 0;         ///< implausible (P < 0.5)
+        uint64_t corroborated = 0;    ///< C >= corroboratedFrom
+        uint64_t peerConfirmed = 0;   ///< independent authors reported the same object in this message's window
+        std::array<uint64_t, 5> reason{};  ///< flagged messages by the component behind the flag (Reason)
     };
 
     TrustEngineParams readParams();
@@ -79,9 +71,7 @@ private:
     const traci::VehicleController* m_controller = nullptr;
     const VehicleDataProvider* m_vdp = nullptr;
     const Timer* m_timer = nullptr;
-    LocalEnvironmentModel* m_lem = nullptr;
-    SensorNoiseService* m_noise = nullptr;  ///< this station's own positioning and radar errors
-    GlobalEnvironmentModel* m_gem = nullptr;
+    SensorNoiseService* m_noise = nullptr;  ///< this station's own positioning error
     IdentityRegistry* m_identities = nullptr;
 
     omnetpp::simsignal_t m_camSignal;
@@ -92,15 +82,11 @@ private:
     double m_defaultLength = 5.0;
     double m_metricsInterval = 1.0;
     double m_metricsWarmup = 2.0;
-    double m_tickInterval = 0.2;
-    bool m_buildingOcclusion = true;
     bool m_visualize = false;
     std::string m_claimRecordFile;
 
     EgoView m_ego;
     double m_egoBuiltAt = -1.0;
-    ArteryGeoMapper m_mapper;
-    double m_lastTick = -1.0;
     bool m_honestReceiver = true;
 
     // the message being processed (for labelling its claims)

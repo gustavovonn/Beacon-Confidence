@@ -3,9 +3,9 @@ package config.neds;
 import artery.application.ItsG5Service;
 
 //
-// Confidence of received CAM and CPM content: Paper 1 (plausibility of every claim track) plus anchors in
-// sources the author does not control (the receiver's radar; independent authors on the same LDM track).
-// The error models (GNSS, radar, field of view) are read from this station's SensorNoiseService.
+// Confidence of received CAM and CPM content: Paper 1 (plausibility of every claim track) plus corroboration by
+// independent authors whose statements land on the same LDM track (it only confirms).
+// The error models (GNSS, CPM object error) are read from this station's SensorNoiseService.
 //
 simple CollectiveTrustService like ItsG5Service
 {
@@ -14,8 +14,7 @@ simple CollectiveTrustService like ItsG5Service
         @display("i=block/app2");
 
         // ── Components (ablation) ──
-        bool enableRadar = default(true);             // the receiver's radar anchors claims
-        bool enablePeers = default(true);             // independent authors confirm claims the radar cannot judge
+        bool enablePeers = default(true);             // independent authors reporting the same object confirm it
         bool enablePoseCheck = default(true);         // CPM reference pose vs the author's CAM track
         bool enableAdmissibility = default(true);     // object reports that cannot be physical
         bool enableObjectKinematics = default(true);  // Paper 1 on perceived-object tracks
@@ -30,20 +29,18 @@ simple CollectiveTrustService like ItsG5Service
         double trackTimeout @unit(s) = default(5s);
         double defaultVehicleLength @unit(m) = default(5m);
 
-        // ── Anchoring (Paper 1's counterless filter, fed by independent sources) ──
-        double anchorSupport = default(1.0);           // own radar confirms (Paper 1's reward)
-        double peerSupport = default(0.5);             // per independent author, at most anchorSupport
-        double anchorPenalty = default(4.0);           // own radar contradicts: two contradictions flag an anchored claim
+        // ── Corroboration (Paper 1's counterless filter, fed only by independent authors) ──
+        double maxSupport = default(1.0);              // Paper 1's reward: the most one message can gain
+        double peerSupport = default(0.5);             // per independent author, at most maxSupport
         double inclusionPeriod @unit(s) = default(1s); // window in which other authors' reports of the same object confirm
 
         // ── States of a message ──
         double implausibleBelow = default(0.5);        // on P (Paper 1)
-        double contradictedBelow = default(0.4);       // on A
-        double anchoredFrom = default(0.58);           // on A: three consecutive confirmations
+        double corroboratedFrom = default(0.58);       // on C: three consecutive full confirmations
 
         // ── Object admissibility ──
         double maxObjectSpeed = default(70.0);         // [m/s]
-        double rangeMargin = default(1.2);             // objects beyond max sensor range * margin are inadmissible
+        double maxObjectRange = default(120.0);        // [m] authors' perception range (100 m, ITU-R M.2057-1 Radar B) + 20 %
 
         // ── Association (greedy gated assignment, CTRA projection) and gating; position errors come from the error models ──
         double maxSyncDt @unit(s) = default(1.1s);         // CAMs may be 1 s apart (ETSI EN 302 637-2)
@@ -51,9 +48,6 @@ simple CollectiveTrustService like ItsG5Service
         double lambdaV = default(1.0);
         double sigmaVel = default(2.0);                    // [m/s] speed tolerance of the assignment cost
         double aMax = default(4.0);                        // [m/s^2] unmodelled acceleration over the projection
-        double occluderRadius @unit(m) = default(1.2m);
-        bool egoGnssError = default(true);                 // the receiver places its view with its own GNSS fix
-        bool buildingOcclusion = default(true);
         string cpmEncoding = default("artery");            // "artery" (CpService quirks) or "etsi"
 
         // ── Metrics and diagnostics (evaluation only) ──

@@ -5,18 +5,12 @@
  * Glue between Artery/Vanetza and the OMNeT-free trust core:
  *   - CAM / CPM parsing into claims (vehicle centre, true-north headings, generation times)
  *   - calibration of the SUMO projected grid against WGS-84
- *   - Artery Position <-> WGS-84 mapping around the receiver
- *   - building occlusion from the GlobalEnvironmentModel
  */
 
 #include "../../include/CpmTypes.h"
 #include "../../include/Geodesy.h"
-#include "../../include/Occlusion.h"
-#include <artery/envmod/GlobalEnvironmentModel.h>
-#include <artery/envmod/EnvironmentModelObstacle.h>
 #include <artery/traci/Cast.h>
 #include <artery/utility/Geometry.h>
-#include <boost/geometry/algorithms/correct.hpp>
 #include <traci/API.h>
 #include <vanetza/asn1/cam.hpp>
 #include <vanetza/asn1/cpm.hpp>
@@ -189,65 +183,6 @@ inline GridFrame calibrateGrid(const traci::API& api, const traci::TraCIPosition
     frame.scale = Geodesy::norm(d) / 100.0;
     return frame;
 }
-
-/// Maps Artery grid positions to WGS-84 around an anchor known in both systems.
-struct ArteryGeoMapper {
-    GridFrame grid;
-    Position anchor;
-    GeoPoint anchorGeo;
-
-    GeoPoint toGeo(const Position& p) const
-    {
-        const LocalPoint d = grid.fromArteryDelta(p.x.value() - anchor.x.value(), p.y.value() - anchor.y.value());
-        return Geodesy::fromLocal(anchorGeo, d);
-    }
-
-    Position toArtery(const GeoPoint& g) const
-    {
-        const LocalPoint d = grid.toArteryDelta(Geodesy::toLocal(anchorGeo, g));
-        return Position(anchor.x.value() + d.east, anchor.y.value() + d.north);
-    }
-};
-
-/// Line of sight blocked by buildings known to the GlobalEnvironmentModel.
-class BuildingOcclusion : public IOcclusionModel {
-public:
-    BuildingOcclusion(GlobalEnvironmentModel* gem, const ArteryGeoMapper& mapper) : m_gem(gem), m_mapper(mapper) {}
-
-    bool blocked(const GeoPoint& from, const GeoPoint& to) const override
-    {
-        if (!m_gem) {
-            return false;
-        }
-        const Position a = m_mapper.toArtery(from);
-        const Position b = m_mapper.toArtery(to);
-        const double minX = std::min(a.x.value(), b.x.value()) - 1.0;
-        const double maxX = std::max(a.x.value(), b.x.value()) + 1.0;
-        const double minY = std::min(a.y.value(), b.y.value()) - 1.0;
-        const double maxY = std::max(a.y.value(), b.y.value()) + 1.0;
-        std::vector<Position> area{Position(minX, minY), Position(maxX, minY), Position(maxX, maxY),
-                                   Position(minX, maxY)};
-        boost::geometry::correct(area);
-
-        const Planar::Vec2 pa{a.x.value(), a.y.value()};
-        const Planar::Vec2 pb{b.x.value(), b.y.value()};
-        for (const auto& obstacle : m_gem->preselectObstacles(area)) {
-            std::vector<Planar::Vec2> polygon;
-            polygon.reserve(obstacle->getOutline().size());
-            for (const Position& p : obstacle->getOutline()) {
-                polygon.push_back(Planar::Vec2{p.x.value(), p.y.value()});
-            }
-            if (Planar::segmentHitsPolygon(pa, pb, polygon)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-private:
-    GlobalEnvironmentModel* m_gem;
-    ArteryGeoMapper m_mapper;
-};
 
 }  // namespace artery
 

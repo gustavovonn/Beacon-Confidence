@@ -4,8 +4,8 @@
 # Every key is either a runner key (scenario, time_limit, seeds, faulty_rate, description) or a parameter listed in
 # scripts/run_cpm_experiment.py::PARAMS. Unknown keys abort the run.
 #
-# Every run yields three variants of the same messages: Paper 1 alone (P), + the receiver's radar, + peers, and
-# the component behind every flag (physics, kinematics, impossible report, CPM pose, radar).
+# Every run reports, per message, what plausibility flags (and the component behind every flag: physics,
+# kinematics, impossible report, CPM pose) and how often other authors corroborate honest and falsified content.
 #
 # Scenario: LuST (config [Config lust]) at 07:30, only the vehicles inside a 1.61 km² square (the size of VeReMi
 # Extension's LuST area, at its density). Prepare once inside the container: bash config/lust/make_state.sh.
@@ -20,9 +20,9 @@
 #   CPM objects                               ghost (attack), object_const_offset, object_random_offset
 #
 # Error models of every station (include/ErrorModels.h):
-#   GNSS          VeReMi Extension error model (Kamel et al., ICC 2020)
-#   radar noise   Jacobs et al. (VTC2023-Spring)
-#   field of view ITU-R M.2057-1 Radar B (100 m, +-25 deg), front and rear; detection by Artery's FoV sensor
+#   GNSS               VeReMi Extension error model (Kamel et al., ICC 2020)
+#   CPM object error   radar noise of Jacobs et al. (VTC2023-Spring); what authors perceive: Artery's FoV sensor with
+#                      ITU-R M.2057-1 Radar B (100 m, +-25 deg), front and rear
 #
 # Threat model: one faulty or malicious station at a time behaves independently (VeReMi / F2MD); collusion,
 # Sybil identities and omission attacks are future work.
@@ -43,7 +43,7 @@ defaults:
   cpm_fault_start_time: 0.0
   cpm_fault_magnitude: 20.0
 
-# ── Honest traffic: false-positive floor and anchoring coverage ───────────────
+# ── Honest traffic: false-positive floor and corroboration coverage ──────────
 honest:
   - id: honest
     description: "No faulty station; referenced GNSS and radar errors"
@@ -81,7 +81,7 @@ cpm_faults:
   - id: object_random_offset
     cpm_fault_profile: "object_random_offset"
 
-# ── Component ablations: what each check contributes (radar and peers are separated inside every run) ──
+# ── Component ablations: what each object check contributes ──
 ablations:
   - id: ghost_no_admissibility
     cpm_fault_profile: "ghost"
@@ -99,35 +99,3 @@ ablations:
     description: "What Paper 1 on object tracks costs in false positives"
     faulty_rate: 0.0
     enable_object_kinematics: false
-
-# ── Coverage study: does detection follow the share of claims the receiver's radar can judge? ──
-# sensor_setup: front (1 x ITU Radar B, 50 deg), front_rear (default, 100 deg), surround (+ 2 x ITU Radar C, 220 deg)
-coverage:
-  - id: front_honest
-    sensor_setup: "front"
-    faulty_rate: 0.0
-  - id: front_const_pos_offset
-    sensor_setup: "front"
-    gnss_fault_profile: "const_pos_offset"
-  - id: front_ghost
-    sensor_setup: "front"
-    cpm_fault_profile: "ghost"
-  - id: front_rear_honest
-    sensor_setup: "front_rear"
-    faulty_rate: 0.0
-  - id: front_rear_const_pos_offset
-    sensor_setup: "front_rear"
-    gnss_fault_profile: "const_pos_offset"
-  - id: front_rear_ghost
-    sensor_setup: "front_rear"
-    cpm_fault_profile: "ghost"
-  - id: surround_honest
-    sensor_setup: "surround"
-    faulty_rate: 0.0
-  - id: surround_const_pos_offset
-    sensor_setup: "surround"
-    gnss_fault_profile: "const_pos_offset"
-  - id: surround_ghost
-    sensor_setup: "surround"
-    cpm_fault_profile: "ghost"
-

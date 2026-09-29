@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!-- Coverage study: ITU-R M.2057-1 Radar B at the front and rear, Radar C (corner class) on each side.
-     Artery mounts sensors at FRONT, BACK, LEFT or RIGHT only, so the corner-class radars sit at the sides. -->
-<sensors>
-	<sensor name="FrontRadar" type="artery.envmod.sensor.FrontRadar" />
-	<sensor name="RearRadar" type="artery.envmod.sensor.RearRadar" />
-	<sensor name="LeftRadar" type="artery.envmod.sensor.RadarSensor" />
-	<sensor name="RightRadar" type="artery.envmod.sensor.RadarSensor" />
-</sensors>

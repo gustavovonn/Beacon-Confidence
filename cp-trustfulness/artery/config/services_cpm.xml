@@ -14,7 +14,7 @@
     <service type="config.neds.SensorNoiseService" name="Noise">
     </service>
 
-    <!-- Confidence of received CAM and CPM content (Paper 1 plausibility + anchoring) -->
+    <!-- Confidence of received CAM and CPM content (Paper 1 plausibility + corroboration) -->
     <service type="config.neds.CollectiveTrustService" name="DR">
     </service>
 </services>

@@ -39,22 +39,13 @@ struct CpmSnapshot {
 };
 
 /// Something the receiver's own physical sensors currently detect.
-struct EgoDetection {
-    uint32_t id = 0;         ///< local tracking id
-    GeoPoint position;       ///< object centre
-    double speed = 0.0;      ///< [m/s]
-    double heading = 0.0;    ///< [deg clockwise from north]
-    bool hasVelocity = false;
-};
-
-/// The receiver's own pose and perception at one instant.
+/// The receiver's own pose at one instant.
 struct EgoView {
     StationId station = 0;
     double time = 0.0;
     GeoPoint centre;
     double heading = 0.0;
     double speed = 0.0;
-    std::vector<EgoDetection> detections;
 };
 
 /**

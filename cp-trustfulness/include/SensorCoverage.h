@@ -61,30 +61,6 @@ public:
         return SensorCoverage(std::move(sectors));
     }
 
-    /**
-     * @brief Is the whole disc of `radius` around p inside one cone? Used for negative evidence: a claim whose true
-     * position may lie anywhere within its uncertainty disc is only contradicted by a missing detection if the
-     * radar would have seen every such position.
-     */
-    bool coversDisc(const GeoPoint& hostCentre, double hostHeadingDeg, const GeoPoint& p, double radius) const
-    {
-        const LocalPoint c = Geodesy::toLocal(hostCentre, p);
-        for (const SensorSector& sector : m_sectors) {
-            const LocalPoint m = Geodesy::direction(hostHeadingDeg, sector.mountForward);
-            const LocalPoint d{c.east - m.east, c.north - m.north};
-            const double dist = Geodesy::norm(d);
-            if (dist <= radius || dist + radius > sector.range) {
-                continue;
-            }
-            const double halfAngle = std::asin(radius / dist) * ConstantsWGS84::RAD_TO_DEG;
-            const double offAxis = std::abs(Geodesy::wrap180(Geodesy::bearing(d) - hostHeadingDeg - sector.mountYawDeg));
-            if (offAxis + halfAngle <= 0.5 * sector.apertureDeg) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     /// Mount point (local metres from the vehicle centre) of the cone that p is most central in: where a
     /// detection of p is measured from.
     LocalPoint mountFor(double hostHeadingDeg, const LocalPoint& p) const
@@ -101,16 +77,6 @@ public:
             }
         }
         return best;
-    }
-
-    /// Farthest point any cone reaches from the vehicle centre [m].
-    double maxRange() const
-    {
-        double range = 0.0;
-        for (const SensorSector& sector : m_sectors) {
-            range = std::max(range, sector.range + std::abs(sector.mountForward));
-        }
-        return range;
     }
 
     bool empty() const { return m_sectors.empty(); }

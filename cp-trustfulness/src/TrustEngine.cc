@@ -90,7 +90,7 @@ void TrustEngine::plausibilityStep(std::deque<KinematicState>& history, Scores& 
         return;
     }
     // Paper 1's tolerance absorbs GNSS velocity jitter between two CAMs (VeReMi: at most 0.15 m of position jitter).
-    // Two radar measurements of a perceived object carry independent noise, which adds up to
+    // Two sensor measurements of a perceived object carry independent noise, which adds up to
     // kappa * sqrt(variance of their difference) / dt of apparent speed; the tolerance widens by exactly that.
     const double tolerance = m_params.kinematics.speedToleranceMps +
                              m_params.association.kappaGate * std::sqrt(std::max(0.0, noiseVariance)) / dt;
@@ -111,48 +111,27 @@ void TrustEngine::plausibilityStep(std::deque<KinematicState>& history, Scores& 
 }
 
 // ----------------------------------------------------------------------------
-// Anchoring: the same counterless filter. The radar decides where it can; elsewhere peers can only confirm.
+// Corroboration: the same counterless filter, fed only by other authors reporting the same physical object. It can
+// only confirm: silence may be an occlusion, a sensor limit or an omission, and no vehicle lowers another's score.
 // ----------------------------------------------------------------------------
-void TrustEngine::anchoringStep(Scores& scores, Verdict ego, int peers)
+void TrustEngine::corroborationStep(Scores& scores, int peers)
 {
     const double w = m_params.kinematics.priorWeight > 0.0 ? m_params.kinematics.priorWeight
                                                            : ConstantsPhysics::DEFAULT_PRIOR_WEIGHT;
-    double support = 0.0;
-    double contradiction = 0.0;
-    if (ego == Verdict::Supported) {
-        support = m_params.anchorSupport;
-    } else if (ego == Verdict::Contradicted) {
-        contradiction = m_params.anchorPenalty;
-        scores.lastContradiction = Reason::Radar;
-    }
-    scores.anchoringEgo = counterlessUpdate(scores.anchoringEgo, support, contradiction, w);
-    if (ego == Verdict::Unverifiable && m_params.enablePeers && peers > 0) {
-        support = std::min(m_params.anchorSupport, m_params.peerSupport * peers);
-    }
-    scores.anchoring = counterlessUpdate(scores.anchoring, support, contradiction, w);
+    const double support = m_params.enablePeers ? std::min(m_params.maxSupport, m_params.peerSupport * peers) : 0.0;
+    scores.corroboration = counterlessUpdate(scores.corroboration, support, 0.0, w);
 }
 
-ClaimState TrustEngine::classify(double plausibility, double anchoring) const
+ClaimState TrustEngine::classify(double plausibility, double corroboration) const
 {
     if (plausibility < m_params.implausibleBelow) {
         return ClaimState::Implausible;
     }
-    if (anchoring < m_params.contradictedBelow) {
-        return ClaimState::Contradicted;
-    }
-    return anchoring >= m_params.anchoredFrom ? ClaimState::Anchored : ClaimState::Unanchored;
-}
-
-Reason TrustEngine::reasonFor(ClaimState state, const Scores& s) const
-{
-    if (state == ClaimState::Implausible) {
-        return s.lastPenalty;
-    }
-    return state == ClaimState::Contradicted ? s.lastContradiction : Reason::None;
+    return corroboration >= m_params.corroboratedFrom ? ClaimState::Corroborated : ClaimState::Uncorroborated;
 }
 
 void TrustEngine::report(ClaimKind kind, StationId author, uint16_t objectId, uint64_t track, double now,
-                         const Scores& s, Verdict ego, int peers)
+                         const Scores& s, int peers)
 {
     if (!m_sink) {
         return;
@@ -164,64 +143,12 @@ void TrustEngine::report(ClaimKind kind, StationId author, uint16_t objectId, ui
     r.ldmTrack = track;
     r.time = now;
     r.plausibility = s.plausibility;
-    r.anchoringEgo = s.anchoringEgo;
-    r.anchoring = s.anchoring;
-    r.egoVerdict = ego;
+    r.corroboration = s.corroboration;
     r.peers = peers;
-    r.state = classify(s.plausibility, s.anchoring);
-    r.stateEgo = classify(s.plausibility, s.anchoringEgo);
-    r.reason = reasonFor(r.state, s);
-    r.reasonEgo = reasonFor(r.stateEgo, s);
+    r.state = classify(s.plausibility, s.corroboration);
+    r.reason = r.state == ClaimState::Implausible ? s.lastPenalty : Reason::None;
     r.penalty = s.penaltyNow;
     m_sink(r);
-}
-
-// ----------------------------------------------------------------------------
-// The receiver's radar: a detection within the gate supports the claim; no detection contradicts it only where the
-// claim's whole uncertainty disc (the gate) lies inside a cone and the line of sight to it is free.
-// ----------------------------------------------------------------------------
-Verdict TrustEngine::observe(const GeoPoint& p, double gate, const EgoView& ego, const IOcclusionModel& statics) const
-{
-    double nearest = std::numeric_limits<double>::infinity();
-    for (const EgoDetection& d : ego.detections) {
-        nearest = std::min(nearest, Geodesy::distance(d.position, p));
-    }
-    if (!m_params.enableRadar) {
-        return Verdict::Unverifiable;
-    }
-    if (nearest <= gate) {
-        return Verdict::Supported;
-    }
-    // The claimed object may truly be anywhere within the gate: only if the radar would have seen every such
-    // position does its absence contradict the claim.
-    const bool certain = m_params.coverage.coversDisc(ego.centre, ego.heading, p, gate);
-    if (!certain || lineBlocked(ego.centre, p, ego, statics)) {
-        return Verdict::Unverifiable;
-    }
-    return Verdict::Contradicted;
-}
-
-/// Buildings, and anything the receiver's own radar detects between it and the point. A vehicle hiding the point
-/// is nearer in the same direction, so the radar sees it; claims of other stations never occlude (a liar could
-/// otherwise hide its own lies).
-bool TrustEngine::lineBlocked(const GeoPoint& from, const GeoPoint& to, const EgoView& ego,
-                              const IOcclusionModel& statics) const
-{
-    if (statics.blocked(from, to)) {
-        return true;
-    }
-    auto toPlanar = [&](const GeoPoint& p) {
-        const LocalPoint d = Geodesy::toLocal(from, p);
-        return Planar::Vec2{d.east, d.north};
-    };
-    const Planar::Vec2 a{0.0, 0.0};
-    const Planar::Vec2 b = toPlanar(to);
-    for (const EgoDetection& d : ego.detections) {
-        if (Planar::segmentHitsDisc(a, b, toPlanar(d.position), m_params.occluderRadius)) {
-            return true;
-        }
-    }
-    return false;
 }
 
 double TrustEngine::vehicleLength(StationId id) const
@@ -238,14 +165,13 @@ GeoPoint TrustEngine::centreFromReference(const GeoPoint& reference, double head
 // ----------------------------------------------------------------------------
 // CAM: the sender's own trajectory
 // ----------------------------------------------------------------------------
-void TrustEngine::onCam(const CamClaim& claim, const EgoView& ego, const IOcclusionModel& statics)
+void TrustEngine::onCam(const CamClaim& claim, const EgoView& ego)
 {
     const double now = ego.time;
     housekeeping(now);
     if (claim.author == ego.station) {
         return;
     }
-    addEgoToMap(ego);
     if (claim.length > 0.0) {
         m_lengths[claim.author] = claim.length;
     }
@@ -253,18 +179,10 @@ void TrustEngine::onCam(const CamClaim& claim, const EgoView& ego, const IOcclus
     scores.lastSeen = now;
     plausibilityStep(m_camHistory[claim.author], scores, claim.state, nullptr);
     const uint64_t body = m_ldm.addCam(claim.author, claim.state);
-
-    // sender GNSS (+ receiver GNSS) and the receiver's radar at the claimed range
-    const KinematicState& c = claim.state;
-    const GeoPoint claimedNow = Geodesy::project(positionOf(c), c.speed, c.heading, now - c.time);
-    const double sensorVariance = m_params.radar.positionVariance(Geodesy::distance(ego.centre, claimedNow));
-    const Verdict seen = observe(claimedNow, gate(1.0 + egoGnssSources(), sensorVariance), ego, statics);
-    const int peers = seen == Verdict::Unverifiable
-                          ? m_ldm.independentSources(body, {claim.author, ego.station}, now - m_params.inclusionPeriod,
-                                                     now + 0.05)
-                          : 0;
-    anchoringStep(scores, seen, peers);
-    report(ClaimKind::Cam, claim.author, 0, body, now, scores, seen, peers);
+    const int peers =
+        m_ldm.independentSources(body, {claim.author, ego.station}, now - m_params.inclusionPeriod, now + 0.05);
+    corroborationStep(scores, peers);
+    report(ClaimKind::Cam, claim.author, 0, body, now, scores, peers);
 }
 
 // ----------------------------------------------------------------------------
@@ -307,7 +225,7 @@ const PhysicalInvarianceResult* TrustEngine::poseCheck(const CpmSnapshot& cpm, c
     return &out;
 }
 
-CpmOutcome TrustEngine::onCpm(const CpmSnapshot& cpm, const EgoView& ego, const IOcclusionModel& statics)
+CpmOutcome TrustEngine::onCpm(const CpmSnapshot& cpm, const EgoView& ego)
 {
     const double now = ego.time;
     housekeeping(now);
@@ -315,7 +233,6 @@ CpmOutcome TrustEngine::onCpm(const CpmSnapshot& cpm, const EgoView& ego, const 
     if (cpm.author == ego.station) {
         return outcome;
     }
-    addEgoToMap(ego);
     const StationId author = cpm.author;
     const GeoPoint authorCentre = centreFromReference(cpm.referencePosition, cpm.heading, author);
     PhysicalInvarianceResult poseResult;
@@ -328,7 +245,7 @@ CpmOutcome TrustEngine::onCpm(const CpmSnapshot& cpm, const EgoView& ego, const 
     outcome.aligned.resize(n);
 
     // Admissibility of each report on its own, and alignment to the CPM time
-    const double maxRange = m_params.coverage.maxRange() * m_params.rangeMargin;
+    const double maxRange = m_params.maxObjectRange;
     for (size_t j = 0; j < n; ++j) {
         const ObjectClaim& o = cpm.objects[j];
         const bool finite = std::isfinite(o.position.lat) && std::isfinite(o.position.lon) &&
@@ -383,8 +300,8 @@ CpmOutcome TrustEngine::onCpm(const CpmSnapshot& cpm, const EgoView& ego, const 
         if (!outcome.admissible[j]) {
             const PhysicalInvarianceResult violation = impossible();
             plausibilityStep(t.history, t.scores, stateOf(o), &violation, false);
-            anchoringStep(t.scores, Verdict::Unverifiable, 0);
-            report(ClaimKind::Object, author, o.objectId, 0, now, t.scores, Verdict::Unverifiable, 0);
+            corroborationStep(t.scores, 0);
+            report(ClaimKind::Object, author, o.objectId, 0, now, t.scores, 0);
             continue;
         }
         if (m_params.enableObjectKinematics) {
@@ -401,40 +318,13 @@ CpmOutcome TrustEngine::onCpm(const CpmSnapshot& cpm, const EgoView& ego, const 
         // two GNSS fixes and two radar measurements (the author's and the one it is compared with)
         const uint64_t track =
             m_ldm.addObject(aligned, outcome.resolvedTo[j], ego.station, gate(2.0, 2.0 * aligned.sensorVariance));
-        Verdict seen = Verdict::Supported;  // an object resolved to the receiver: the receiver knows where it is
-        if (outcome.resolvedTo[j] != ego.station) {
-            const GeoPoint atNow = aligned.hasVelocity
-                                       ? Geodesy::project(aligned.position, aligned.speed, aligned.heading, now - aligned.time)
-                                       : aligned.position;
-            const double egoVariance = m_params.radar.positionVariance(Geodesy::distance(ego.centre, atNow));
-            seen = observe(atNow, gate(1.0 + egoGnssSources(), aligned.sensorVariance + egoVariance), ego, statics);
-        }
-        const int peers = (seen == Verdict::Unverifiable && track)
-                              ? m_ldm.independentSources(track, {author, ego.station}, now - m_params.inclusionPeriod,
-                                                         now + 0.05)
-                              : 0;
-        anchoringStep(t.scores, seen, peers);
-        report(ClaimKind::Object, author, o.objectId, track, now, t.scores, seen, peers);
+        const int peers =
+            track ? m_ldm.independentSources(track, {author, ego.station}, now - m_params.inclusionPeriod, now + 0.05)
+                  : 0;
+        corroborationStep(t.scores, peers);
+        report(ClaimKind::Object, author, o.objectId, track, now, t.scores, peers);
     }
     return outcome;
-}
-
-void TrustEngine::tick(const EgoView& ego)
-{
-    housekeeping(ego.time);
-    addEgoToMap(ego);
-}
-
-void TrustEngine::addEgoToMap(const EgoView& ego)
-{
-    if (ego.time == m_egoAddedAt) {
-        return;
-    }
-    m_egoAddedAt = ego.time;
-    for (const EgoDetection& d : ego.detections) {
-        const double variance = m_params.radar.positionVariance(Geodesy::distance(ego.centre, d.position));
-        m_ldm.addEgo(ego.station, d, ego.time, gate(1.0 + egoGnssSources(), 2.0 * variance));
-    }
 }
 
 void TrustEngine::housekeeping(double now)

@@ -12,13 +12,13 @@
 namespace artery {
 
 /// Who made a statement about a track.
-enum class SourceKind { Ego, Cam, Cpm };
+enum class SourceKind { Cam, Cpm };
 
 /// One statement about a track, kept with its source (provenance). Nothing is fused away.
 struct LdmContribution {
-    StationId station = 0;   ///< Ego: the receiver; Cam: the sender (the body itself); Cpm: the author
+    StationId station = 0;   ///< Cam: the sender (the body itself); Cpm: the author
     SourceKind kind = SourceKind::Cpm;
-    uint32_t localId = 0;    ///< Ego: LEM tracking id; Cpm: CPM object id; Cam: 0
+    uint32_t localId = 0;    ///< Cpm: CPM object id; Cam: 0
     ObjectClaim claim;       ///< time, position (centre), velocity
 };
 
@@ -35,7 +35,7 @@ struct LdmTrack {
 /**
  * @brief Local Dynamic Map (LDM) of one receiver: one track per physical object, with provenance.
  *
- * Every CAM (the sender's body), every admissible CPM object and every ego radar detection is attached to a
+ * Every CAM (the sender's body) and every admissible CPM object is attached to a
  * track: first by continuity (the same source kept the same local id or station), then by the nearest track
  * inside the gate, else a new track. Contributions keep their source, so a claim can be compared with what
  * OTHER sources say about the same physical object (leave-one-out).
@@ -90,36 +90,13 @@ public:
             id = continuing(key, claim.position, claim.time, gate);
         }
         if (id == 0) {
-            id = nearest(claim.position, claim.time, gate, claim.author, SourceKind::Cpm, false);
+            id = nearest(claim.position, claim.time, gate, claim.author, SourceKind::Cpm);
         }
         if (id == 0) {
             id = create();
         }
         m_continuity[key] = id;
         append(id, LdmContribution{claim.author, SourceKind::Cpm, claim.objectId, claim});
-        return id;
-    }
-
-    /// A detection of the receiver's own radar at `time`.
-    uint64_t addEgo(StationId receiver, const EgoDetection& d, double time, double gate)
-    {
-        ObjectClaim c;
-        c.author = receiver;
-        c.time = time;
-        c.position = d.position;
-        c.speed = d.speed;
-        c.heading = d.heading;
-        c.hasVelocity = d.hasVelocity;
-        const auto key = std::make_tuple(static_cast<int>(SourceKind::Ego), receiver, d.id);
-        uint64_t id = continuing(key, d.position, time, gate);
-        if (id == 0) {
-            id = nearest(d.position, time, gate, receiver, SourceKind::Ego, true);
-        }
-        if (id == 0) {
-            id = create();
-        }
-        m_continuity[key] = id;
-        append(id, LdmContribution{receiver, SourceKind::Ego, d.id, c});
         return id;
     }
 
@@ -131,8 +108,7 @@ public:
 
     /**
      * Number of distinct stations, other than `excluded`, whose CAM or CPM put a statement on the track during
-     * [t0, t1]: the independent confirmations of a claim about this object. The receiver's own radar is not
-     * counted here (it is the Observation check).
+     * [t0, t1]: the independent confirmations of a claim about this object.
      */
     int independentSources(uint64_t id, const std::set<StationId>& excluded, double t0, double t1) const
     {
@@ -142,7 +118,7 @@ public:
         }
         std::set<StationId> sources;
         for (const LdmContribution& c : t->contributions) {
-            if (c.kind != SourceKind::Ego && !excluded.count(c.station) && c.claim.time >= t0 && c.claim.time <= t1) {
+            if (!excluded.count(c.station) && c.claim.time >= t0 && c.claim.time <= t1) {
                 sources.insert(c.station);
             }
         }
@@ -209,15 +185,15 @@ private:
     }
 
     /// Nearest track within the gate at `time`, excluding tracks the same source already feeds with another
-    /// statement in the last 0.5 s (one source does not report one object twice). CAM bodies are candidates only
-    /// for ego detections: CPM objects join a body through resolution against the CAM track.
-    uint64_t nearest(const GeoPoint& p, double time, double gate, StationId station, SourceKind kind, bool bodies) const
+    /// statement in the last 0.5 s (one source does not report one object twice). CAM bodies are no candidates:
+    /// CPM objects join a body through resolution against the CAM track.
+    uint64_t nearest(const GeoPoint& p, double time, double gate, StationId station, SourceKind kind) const
     {
         uint64_t best = 0;
         double bestDist = gate;
         for (const auto& entry : m_tracks) {
             const LdmTrack& t = entry.second;
-            if (!bodies && t.identity >= 0) {
+            if (t.identity >= 0) {
                 continue;
             }
             auto last = t.lastBy.find({static_cast<int>(kind), station});

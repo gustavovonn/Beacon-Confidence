@@ -30,8 +30,8 @@ class VehicleDataProvider;
  * A faulty station (FaultySensorNoiseService) may also carry one of the four VeReMi Extension position
  * malfunctions (F2mdFaults.h), applied to CAM and CPM alike, as a positioning failure would.
  *
- * The receiver's own view uses the same models: gnssErrorNow() for its own position, radarMeasure() for its own
- * detections. Attack services modify the messages first (their listener sits on the emitting module).
+ * The receiver's own pose uses the same GNSS model (gnssErrorNow()). Attack services modify the messages first
+ * (their listener sits on the emitting module).
  */
 class SensorNoiseService : public ItsG5BaseService
 {

@@ -7,12 +7,10 @@ Every configuration in cpm_batch_config.yaml is merged with `defaults`, translat
 through PARAMS (unknown keys are an error), and run once per seed inside the `artery` container. Each run writes its
 own vehicles.xml and result files under results/cpm_experiments/exp_<timestamp>_<tag>/runs/<id>_s<seed>/.
 
-Metrics (per message, as in Paper 1; honest receivers only, after the warm-up), for CAMs and CPM objects and three
-variants computed from the same run:
-  p1     Paper 1 alone: flagged when P < 0.5
-  ego    + the receiver's radar: flagged when implausible or contradicted (radar-only anchoring)
-  full   + independent authors (peers only confirm, so they change anchoring, not what is flagged)
-  precision, recall, F1, FPR over messages; `anchored` = share of honest messages anchored.
+Metrics (per message, as in Paper 1; honest receivers only, after the warm-up), for CAMs and CPM objects:
+  flagged       implausible (P < 0.5): precision, recall, F1, FPR over messages
+  corroborated  C >= 0.58 (other authors reported the same object): share of honest messages (coverage of the
+                confirmation) and of falsified messages (false content that others happened to confirm)
 """
 
 import os
@@ -50,15 +48,7 @@ CONTAINER = "artery"
 CONTAINER_ARTERY_DIR = "/workspace/cp-trustfulness/artery"
 
 # Keys handled by the runner itself (not OMNeT parameters)
-RUNNER_KEYS = {"id", "description", "scenario", "time_limit", "seeds", "faulty_rate", "sensor_setup"}
-
-# Coverage study: Artery sensor file and the matching receiver coverage model (range:aperture:mountYaw:mountForward).
-# ITU-R M.2057-1: Radar B (100 m, +-25 deg) front/rear; Radar C (corner class, 100 m, +-30 deg) on the sides.
-SENSOR_SETUPS = {
-    "front": ("config/sensors_front.xml", "100:50:0:2.5"),
-    "front_rear": ("config/sensors.xml", "100:50:0:2.5,100:50:180:-2.5"),
-    "surround": ("config/sensors_surround.xml", "100:50:0:2.5,100:50:180:-2.5,100:60:90:0,100:60:270:0"),
-}
+RUNNER_KEYS = {"id", "description", "scenario", "time_limit", "seeds", "faulty_rate"}
 
 # YAML key -> (middleware submodule, NED parameter, kind); kind in {"str", "bool", "num", "m", "s"}
 PARAMS = {
@@ -75,7 +65,6 @@ PARAMS = {
     "gnss_error_model":      ("Noise", "gnssErrorModel", "str"),     # veremi | none
     "radar_error_model":     ("Noise", "radarErrorModel", "str"),    # jacobs | none
     # components (ablation)
-    "enable_radar":             ("DR", "enableRadar", "bool"),
     "enable_peers":             ("DR", "enablePeers", "bool"),
     "enable_pose_check":        ("DR", "enablePoseCheck", "bool"),
     "enable_admissibility":     ("DR", "enableAdmissibility", "bool"),
@@ -84,26 +73,22 @@ PARAMS = {
     "dr_model":               ("DR", "drAlgorithm", "str"),
     "history_size":           ("DR", "historySize", "num"),
     "max_position_deviation": ("DR", "maxPositionDeviation", "m"),
-    # anchoring and states
-    "anchor_support":     ("DR", "anchorSupport", "num"),
+    # corroboration and states
+    "max_support":        ("DR", "maxSupport", "num"),
     "peer_support":       ("DR", "peerSupport", "num"),
-    "anchor_penalty":     ("DR", "anchorPenalty", "num"),
     "inclusion_period":   ("DR", "inclusionPeriod", "s"),
     "implausible_below":  ("DR", "implausibleBelow", "num"),
-    "contradicted_below": ("DR", "contradictedBelow", "num"),
-    "anchored_from":      ("DR", "anchoredFrom", "num"),
+    "corroborated_from":  ("DR", "corroboratedFrom", "num"),
+    "max_object_range":   ("DR", "maxObjectRange", "num"),
     # resolution and gating
     "max_sync_dt":        ("DR", "maxSyncDt", "s"),
     "kappa_gate":         ("DR", "kappaGate", "num"),
-    "ego_gnss_error":     ("DR", "egoGnssError", "bool"),
-    "building_occlusion": ("DR", "buildingOcclusion", "bool"),
     # metrics
     "metrics_warmup":     ("DR", "metricsWarmup", "s"),
 }
 
 KINDS = ("cam", "object")
-REASONS = ("physics", "kinematics", "impossible", "pose", "radar")  # which component a flag is owed to
-VARIANTS = (("p1", "flagged_p1"), ("ego", "flagged_ego"), ("", "flagged"))
+REASONS = ("physics", "kinematics", "impossible", "pose")  # which component a flag is owed to
 
 
 def format_value(value: Any, kind: str) -> str:
@@ -161,30 +146,21 @@ def ratio(num: float, den: float) -> float:
 
 
 def compute_metrics(s: Dict[str, float]) -> Dict[str, float]:
-    """Per-message confusion for CAMs and objects, for each variant (see the module docstring)."""
+    """Per-message confusion and corroboration for CAMs and objects (see the module docstring)."""
     g = lambda k: s.get(k, 0.0)
     m: Dict[str, float] = {}
     for kind in KINDS:
         n_honest, n_false = g(f"cl_{kind}_honest_n"), g(f"cl_{kind}_falsified_n")
         m[f"{kind}_honest_n"], m[f"{kind}_falsified_n"] = n_honest, n_false
-        for suffix, counter in VARIANTS:
-            tp, fp = g(f"cl_{kind}_falsified_{counter}"), g(f"cl_{kind}_honest_{counter}")
-            precision, recall = ratio(tp, tp + fp), ratio(tp, n_false)
-            tag = f"_{suffix}" if suffix else ""
-            m[f"{kind}_recall{tag}"] = recall
-            m[f"{kind}_precision{tag}"] = precision
-            m[f"{kind}_fpr{tag}"] = ratio(fp, n_honest)
-            m[f"{kind}_f1{tag}"] = (2 * precision * recall / (precision + recall)
-                                    if precision + recall > 0 else float("nan"))
-        m[f"{kind}_anchored_ego"] = ratio(g(f"cl_{kind}_honest_anchored_ego"), n_honest)
-        m[f"{kind}_anchored"] = ratio(g(f"cl_{kind}_honest_anchored"), n_honest)
-        m[f"{kind}_falsified_contradicted"] = ratio(g(f"cl_{kind}_falsified_contradicted"), n_false)
-        # coverage study: how often the receiver's radar could judge, and what it said when it could
-        for label, n in (("falsified", n_false), ("honest", n_honest)):
-            sup, con = g(f"cl_{kind}_{label}_ego_supported"), g(f"cl_{kind}_{label}_ego_contradicted")
-            m[f"{kind}_{label}_judged"] = ratio(sup + con, n)
-            m[f"{kind}_{label}_contradicted_when_judged"] = ratio(con, sup + con)
-        m[f"{kind}_peer_confirmed"] = ratio(g(f"cl_{kind}_honest_peer_confirmed"), n_honest)
+        tp, fp = g(f"cl_{kind}_falsified_flagged"), g(f"cl_{kind}_honest_flagged")
+        precision, recall = ratio(tp, tp + fp), ratio(tp, n_false)
+        m[f"{kind}_recall"] = recall
+        m[f"{kind}_precision"] = precision
+        m[f"{kind}_fpr"] = ratio(fp, n_honest)
+        m[f"{kind}_f1"] = 2 * precision * recall / (precision + recall) if precision + recall > 0 else float("nan")
+        for label, n in (("honest", n_honest), ("falsified", n_false)):
+            m[f"{kind}_{label}_corroborated"] = ratio(g(f"cl_{kind}_{label}_corroborated"), n)
+            m[f"{kind}_{label}_peer_confirmed"] = ratio(g(f"cl_{kind}_{label}_peer_confirmed"), n)
         for label in ("falsified", "honest"):
             flagged = g(f"cl_{kind}_{label}_flagged")
             for reason in REASONS:
@@ -221,10 +197,6 @@ def execute_run(cfg: Dict[str, Any], seed: int, run_dir: str, dry_run: bool) -> 
         "--**.vector-recording=false",  # Artery's generic vectors are large and unused here
         f'--*.node[*].middleware.DR.claimRecordFile=\\"{rel_dir}/claims.csv\\"',
     ] + omnet_overrides(cfg)
-    if cfg.get("sensor_setup"):
-        sensors, coverage = SENSOR_SETUPS[cfg["sensor_setup"]]
-        overrides += [f'--*.node[*].environmentModel.sensors=xmldoc(\\"{sensors}\\")',
-                      f'--*.node[*].middleware.Noise.sensorCoverage=\\"{coverage}\\"']
 
     script = f"""
         cd {CONTAINER_ARTERY_DIR} || exit 1
@@ -321,20 +293,15 @@ def write_run_report(run_dir: str, row: Dict[str, Any], cfg: Dict[str, Any]):
     s = read_scalars(sca)
     g = lambda k: s.get(k, 0.0)
     lines += ["## Messages judged by honest receivers", "",
-              "| | honest | falsified | flagged honest (P1 / +radar / +peers) | flagged falsified (P1 / +radar / +peers) "
-              "| honest anchored (radar / +peers) |",
-              "| :--- | ---: | ---: | :---: | :---: | :---: |"]
+              "| | honest | falsified | flagged honest | flagged falsified | F1 | FPR "
+              "| corroborated honest | corroborated falsified |",
+              "| :--- | ---: | ---: | ---: | ---: | :---: | :---: | :---: | :---: |"]
     for kind in KINDS:
         h = lambda c: g(f"cl_{kind}_honest_{c}")
         x = lambda c: g(f"cl_{kind}_falsified_{c}")
-        lines.append(f"| {kind} | {h('n'):.0f} | {x('n'):.0f} "
-                     f"| {h('flagged_p1'):.0f} / {h('flagged_ego'):.0f} / {h('flagged'):.0f} "
-                     f"| {x('flagged_p1'):.0f} / {x('flagged_ego'):.0f} / {x('flagged'):.0f} "
-                     f"| {fmt(ratio(h('anchored_ego'), h('n')))} / {fmt(ratio(h('anchored'), h('n')))} |")
-    lines += ["", "| | F1 P1 | F1 +radar | F1 +peers | FPR +peers |", "| :--- | :---: | :---: | :---: | :---: |"]
-    for kind in KINDS:
-        lines.append(f"| {kind} | {fmt(row.get(f'{kind}_f1_p1'), False)} | {fmt(row.get(f'{kind}_f1_ego'), False)} "
-                     f"| {fmt(row.get(f'{kind}_f1'), False)} | {fmt(row.get(f'{kind}_fpr'))} |")
+        lines.append(f"| {kind} | {h('n'):.0f} | {x('n'):.0f} | {h('flagged'):.0f} | {x('flagged'):.0f} "
+                     f"| {fmt(row.get(f'{kind}_f1'), False)} | {fmt(row.get(f'{kind}_fpr'))} "
+                     f"| {fmt(row.get(f'{kind}_honest_corroborated'))} | {fmt(row.get(f'{kind}_falsified_corroborated'))} |")
     lines += ["", "## Association", "", "| metric | value |", "| :--- | :---: |",
               f"| resolved right / wrong | {g('assoc_tp'):.0f} / {g('assoc_fp'):.0f} |",
               f"| unresolved but resolvable / correctly unresolved | {g('assoc_fn'):.0f} / {g('assoc_tn'):.0f} |",
@@ -352,15 +319,13 @@ def write_report(rows: List[Dict[str, Any]], path: str, header: Dict[str, str]):
     for k, v in header.items():
         lines.append(f"- **{k}:** `{v}`")
     lines += ["", "Per message, honest receivers, after the warm-up; mean over successful seeds ± the 95 % Student-t "
-              "half-width. **P1** = Paper 1 alone (P < 0.5); **+radar** = flagged when implausible or contradicted by "
-              "the receiver's radar; **+peers** adds confirmations by independent authors (they only change "
-              "anchoring). **anchored** = share of honest messages anchored (radar only / with peers).", ""]
+              "half-width. **flagged** = implausible (P < 0.5); **corroborated** = C >= 0.58, share of honest / "
+              "falsified messages confirmed by other authors.", ""]
     columns = []
     for kind in KINDS:
-        columns += [(f"{kind}_f1_p1", f"{kind} F1 P1", False), (f"{kind}_f1_ego", f"{kind} F1 +radar", False),
-                    (f"{kind}_f1", f"{kind} F1 +peers", False), (f"{kind}_fpr", f"{kind} FPR", True),
-                    (f"{kind}_anchored_ego", f"{kind} anchored (radar)", True),
-                    (f"{kind}_anchored", f"{kind} anchored (+peers)", True)]
+        columns += [(f"{kind}_f1", f"{kind} F1", False), (f"{kind}_fpr", f"{kind} FPR", True),
+                    (f"{kind}_honest_corroborated", f"{kind} corroborated honest", True),
+                    (f"{kind}_falsified_corroborated", f"{kind} corroborated falsified", True)]
     columns.append(("assoc_precision", "assoc prec", True))
     blocks: Dict[str, List[Dict[str, Any]]] = {}
     for r in rows:
@@ -547,9 +512,10 @@ def main():
         print(f"  -> [{block}] {run_id} seed {seed} started", flush=True)
         metrics = execute_run(merged, seed, os.path.join(exp_dir, "runs", f"{run_id}_s{seed}"), args.dry_run)
         if metrics:
-            print(f"     [{run_id} s{seed}] CAM F1 {fmt(metrics['cam_f1_p1'], False)} -> {fmt(metrics['cam_f1'], False)}  "
-                  f"object F1 {fmt(metrics['object_f1_p1'], False)} -> {fmt(metrics['object_f1'], False)}  "
-                  f"honest CAMs anchored {fmt(metrics['cam_anchored'])}  ({metrics['wall_time_s']:.0f}s)", flush=True)
+            print(f"     [{run_id} s{seed}] CAM F1 {fmt(metrics['cam_f1'], False)}  "
+                  f"object F1 {fmt(metrics['object_f1'], False)}  "
+                  f"honest CAMs corroborated {fmt(metrics['cam_honest_corroborated'])}  ({metrics['wall_time_s']:.0f}s)",
+                  flush=True)
         return {"block": block, "id": run_id, "seed": seed, "status": "ok" if metrics else "failed",
                 "run_dir": os.path.join(exp_dir, "runs", f"{run_id}_s{seed}"),
                 **{k: v for k, v in merged.items() if k != "id"}, **(metrics or {})}
