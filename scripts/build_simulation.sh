@@ -23,6 +23,16 @@ echo "========================================"
 echo " Artery Build — $SCENARIO scenario"
 echo "========================================"
 
+# --- Check submodules are checked out (a clone without --recursive leaves artery/ empty) ---
+REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+if [ ! -f "$REPO_DIR/artery/CMakeLists.txt" ] || [ ! -f "$REPO_DIR/artery/extern/vanetza/CMakeLists.txt" ]; then
+    echo "[ERROR] The artery submodule (or its extern/ submodules) is not checked out."
+    echo "        Run: git -C $REPO_DIR submodule update --init --recursive"
+    echo "        If a configure already failed, also run: docker exec $CONTAINER_NAME rm -rf $BUILD_DIR"
+    exit 1
+fi
+echo "[OK] Submodules are checked out."
+
 # --- Check container is running ---
 if ! docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
     echo "[ERROR] Container '$CONTAINER_NAME' is not running."
