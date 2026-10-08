@@ -13,3 +13,6 @@ endif()
 
 # Configure opp_run helper for this scenario
 add_opp_run(cp_trustfulness NED_FOLDERS ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_subdirectory(dataset-generator)
+
