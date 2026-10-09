@@ -1,7 +1,7 @@
 #ifndef COLLECTIVE_TRUST_SERVICE_H_
 #define COLLECTIVE_TRUST_SERVICE_H_
 
-#include "../../include/TrustEngine.h"
+#include "../../include/CpTrustEngine.h"
 #include "ArteryAdapters.h"
 #include <artery/application/ItsG5BaseService.h>
 #include <array>
@@ -25,7 +25,7 @@ class VehicleDataProvider;
  * @brief Artery adapter of the confidence engine.
  *
  * Parses received CAMs and CPMs into claims, builds the receiver's own pose (with the station's referenced GNSS
- * error from SensorNoiseService) and feeds both to TrustEngine. It also scores
+ * error from SensorNoiseService) and feeds both to CpTrustEngine. It also scores
  * every attributed confidence against simulator ground truth, which the engine never sees.
  */
 class CollectiveTrustService : public ItsG5BaseService
@@ -51,23 +51,25 @@ private:
     /// Per-message outcome counters: [kind][falsified] (honest receivers, after the warm-up).
     struct Outcomes {
         uint64_t n = 0;
-        uint64_t flagged = 0;         ///< implausible (P < 0.5)
-        uint64_t corroborated = 0;    ///< C >= corroboratedFrom
-        uint64_t peerConfirmed = 0;   ///< independent authors reported the same object in this message's window
-        std::array<uint64_t, 5> reason{};  ///< flagged messages by the component behind the flag (Reason)
+        uint64_t flagged = 0;         ///< implausible: confidence < 0.5
+        uint64_t flaggedBase = 0;     ///< implausible without corroboration evidence (evaluation only)
+        uint64_t admitted = 0;        ///< violated no check and entered the LDM
+        uint64_t confirmed = 0;       ///< admitted and confirmed by at least one other station
+        std::array<uint64_t, 6> reason{};      ///< flagged vectors by the check behind the flag (Reason)
+        std::array<uint64_t, 6> reasonBase{};  ///< the same without corroboration
     };
 
-    TrustEngineParams readParams();
+    CpTrustEngineParams readParams();
     void handleCam(omnetpp::cObject*);
     void handleCpm(omnetpp::cObject*);
     void onClaim(const ClaimResult&);
     const EgoView& egoView();
     MessageTiming timing() const;
     const GroundTruth& truthOf(StationId id);
-    void recordAssociation(const CpmSnapshot&, const CpmOutcome&);
+    void recordAssociation(const CpmSnapshot&, const std::vector<ObjectOutcome>&);
     void updateVisualization(StationId id, ClaimState state);
 
-    std::unique_ptr<TrustEngine> m_engine;
+    std::unique_ptr<CpTrustEngine> m_engine;
     const traci::VehicleController* m_controller = nullptr;
     const VehicleDataProvider* m_vdp = nullptr;
     const Timer* m_timer = nullptr;
@@ -84,6 +86,7 @@ private:
     double m_metricsWarmup = 2.0;
     bool m_visualize = false;
     std::string m_claimRecordFile;
+    std::string m_contextRecordFile;
 
     EgoView m_ego;
     double m_egoBuiltAt = -1.0;
@@ -100,9 +103,15 @@ private:
     // Association (resolution) metrics against ground truth
     struct {
         uint64_t tp = 0;  ///< resolved to the right station
-        uint64_t fp = 0;  ///< resolved to a wrong station (or a ghost resolved)
+        uint64_t fp = 0;  ///< resolved to a wrong station
         uint64_t fn = 0;  ///< left unresolved although the true station was known to the receiver
         uint64_t tn = 0;  ///< left unresolved and not resolvable
+        // How much of the corroboration granted rests on a resolution that ground truth contradicts. A wrong
+        // resolution cannot lower anyone's confidence, but it raises the confidence of the vector it corroborates,
+        // so it shelters falsified content instead of framing honest content.
+        uint64_t corrEvents = 0;      ///< confirming stations summed over resolved, honest object vectors
+        uint64_t corrMisassoc = 0;    ///< of those, granted to objects resolved to the wrong station
+        uint64_t corrFalsified = 0;   ///< confirming stations granted to falsified objects resolved to a station
     } m_assoc;
     uint64_t m_camsReceived = 0;
     uint64_t m_cpmsReceived = 0;

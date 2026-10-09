@@ -2,6 +2,8 @@
 #define ASSOCIATION_ENGINES_H_
 
 #include "IAssociationEngine.h"
+#include <memory>
+#include <string>
 #include <vector>
 
 namespace artery {
@@ -23,12 +25,27 @@ double headingSigma(double speed, const AssociationParams& params);
 double calculateMatchConfidence(double cost);
 }  // namespace SpatialAssociationUtils
 
-/// Gated assignment: gated pairs accepted by ascending cost, each CAM track and object at most once.
+/// Gated global assignment by the Hungarian algorithm (Kuhn-Munkres): the assignment of objects to CAM
+/// tracks that minimises the total cost, with each track and each object used at most once. Pairs outside
+/// the gate are forbidden, so an object with no gated track stays unresolved.
+class HungarianAssociation : public IAssociationEngine {
+public:
+    std::vector<AssociationMatch> associate(const AssociationContext& ctx) override;
+    std::string getName() const override { return "Hungarian"; }
+};
+
+/// Gated greedy nearest neighbour: repeatedly takes the cheapest remaining pair inside the gate, with
+/// each track and each object used at most once. Kept as the ablation baseline for the assignment, since
+/// greedy and Hungarian differ exactly where two objects compete for one track; it is NOT the production
+/// engine and must never be described as Hungarian.
 class GreedyAssociation : public IAssociationEngine {
 public:
     std::vector<AssociationMatch> associate(const AssociationContext& ctx) override;
     std::string getName() const override { return "Greedy"; }
 };
+
+/// Builds the engine named by `name` ("hungarian" or "greedy"); defaults to Hungarian.
+std::unique_ptr<IAssociationEngine> makeAssociationEngine(const std::string& name);
 
 }  // namespace artery
 

@@ -10,7 +10,7 @@ namespace artery
 
 class VehicleDataProvider;
 
-/// CP service of a faulty station: a ghost vehicle, or VeReMi's position malfunctions on every perceived object.
+/// CP service of a faulty station: VeReMi's position malfunctions applied to every perceived object.
 class FaultyCpService : public CpService
 {
 public:
@@ -19,14 +19,10 @@ public:
     void receiveSignal(omnetpp::cComponent* source, omnetpp::simsignal_t signal, omnetpp::cObject* obj, omnetpp::cObject* details) override;
 
 private:
-    void injectGhost(vanetza::asn1::r2::Cpm&, double gridDx, double gridDy, double speed, double gridHeadingDeg);
-
     omnetpp::simsignal_t m_sigCpmSent;
     const VehicleDataProvider* m_vdp = nullptr;
     std::string m_cpmFaultMode;
-    double m_cpmFaultMagnitude = 0.0;
     omnetpp::SimTime m_cpmFaultStartTime;
-    uint16_t m_ghostId = 0;
     LocalPoint m_constOffset;  ///< object_const_offset [m east/north]
     unsigned long m_invalidCpms = 0;
 };

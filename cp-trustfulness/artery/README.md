@@ -31,7 +31,8 @@ Useful options: `--seed-list 1,2,3`, `--time-limit 30s`, `--scenario grid` (quic
 `--jobs N` (at most 3 on LuST, 5 on the grid).
 
 Results go to `results/cpm_experiments/exp_<date>_<tag>/`: `REPORT.md` (all configurations), `runs/<id>_s<seed>/RUN.md`
-(one run), `cpm_results.csv` (all metrics), `claims.csv` per run (sampled per-claim scores).
+(one run), `cpm_results.csv` (all metrics), `claims.csv` per run (sampled per-vector confidence, with and without
+corroboration). Every run scores each vector twice: with corroboration and without it (`_base` columns).
 
 To merge several experiments into one report:
 
@@ -47,7 +48,8 @@ To rebuild the reports of an interrupted experiment: `.venv/bin/python3 scripts/
 All experiments are defined in `cpm_batch_config.yaml`:
 
 * `defaults:` applies to every run (scenario `lust`, time, seeds, faulty share, error models, fault start times).
-* Each other top-level key is a **block** (`honest`, `position_faults`, `speed_faults`, `cpm_faults`, `ablations`);
+* Each other top-level key is a **block** (`honest`, `position_faults`, `speed_faults`, `cpm_faults`, `ablations`,
+  `no_building_test`);
   each item in a block is one configuration with an `id` and the keys it changes.
 
 To add a configuration, add an item to a block (or a new block):
@@ -69,7 +71,7 @@ and run it with `--block my_block`. The keys you can use are listed in `PARAMS` 
 | `gnss_fault_profile` | `none`, `const_pos`, `const_pos_offset`, `random_pos`, `random_pos_offset` |
 | `fault_profile` | `none`, `const_speed`, `const_speed_offset`, `random_speed`, `random_speed_offset` |
 | `cpm_fault_profile` | `none`, `ghost`, `object_const_offset`, `object_random_offset` |
-| `enable_peers`, `enable_admissibility`, `enable_object_kinematics`, `enable_pose_check` | `true` / `false` (component ablations) |
+| `enable_peers`, `enable_admissibility`, `enable_building_test`, `enable_object_kinematics`, `enable_pose_check` | `true` / `false` (component ablations) |
 | `gnss_error_model`, `radar_error_model` | `veremi` / `none`, `jacobs` / `none` |
 
 Default values of every parameter, with their sources, are in `config/neds/CollectiveTrustService.ned` (the receiver)

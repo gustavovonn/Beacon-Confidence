@@ -74,6 +74,10 @@ struct ProjectedTrack {
 struct AssociationMatch {
     StationId station = 0;
     size_t objectIndex = 0;
+    /// Residual of the accepted pair, normalised by its gate: 0 at the prediction, 1 at the gate ceiling.
+    /// The plausibility evidence of the vector is read from this magnitude, so association and the check
+    /// share one statistic: association is the argmin, plausibility is the value at the argmin.
+    double normalisedResidual = 0.0;
 };
 
 }  // namespace artery

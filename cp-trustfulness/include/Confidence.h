@@ -2,17 +2,19 @@
 #define CONFIDENCE_H_
 
 /**
- * Vocabulary of the confidence model: Paper 1 applied to CAM and CPM content, plus corroboration by other authors.
+ * Vocabulary of the confidence model: Paper 1 applied to CAM and CPM motion vectors, plus corroboration.
  *
- *   Claim track   what successive messages say about one thing: a CAM sender's own trajectory, or one
- *                 perceived object of one CPM author (author, CPM object id).
- *   Plausibility  P, Paper 1's counterless Beta score of the track (physical invariance + CTRA prediction).
- *   Corroboration C, the same filter fed only by other authors whose statements land on the same LDM track. It
- *                 only confirms: silence is no evidence, so no vehicle can lower the confidence of another.
- *   State         what one message is worth to an application:
- *                   implausible     P < 0.5       Paper 1 rejects it
- *                   corroborated    C >= 0.58     plausible and confirmed by other authors
- *                   uncorroborated  otherwise     plausible, but no one else reported it
+ *   Claim stream  the successive motion vectors of one origin about one vehicle: a CAM sender's own trajectory
+ *                 (station id), or one author's reports of one perceived object ((author, CPM object id)).
+ *                 The key is provenance: it says who claimed what, never which body the receiver thinks
+ *                 it is. Plausibility is judged INSIDE a stream, where the author's positioning bias is on
+ *                 both sides of the comparison and cancels.
+ *   Confidence    S, one per claim stream: Paper 1's counterless Beta score, fed by the evidence of the checks (for
+ *                 or against) and by corroboration from other stations on the same object hypothesis (only
+ *                 for). It is not a sender reputation, not an object-existence estimate and not a
+ *                 calibrated probability, and it is not comparable across streams of different maturity:
+ *                 a fresh stream sits at the uninformed prior, above the honest steady state.
+ *   State         a vector is implausible (flagged) when its stream's confidence is below 0.5, otherwise plausible.
  */
 
 #include <cstdint>
@@ -23,15 +25,34 @@ using StationId = long;
 
 enum class ClaimKind { Cam, Object };
 
-enum class ClaimState { Corroborated, Uncorroborated, Implausible };
+enum class ClaimState { Plausible, Implausible };
 
-/// Which component an implausible state is owed to (for attribution): the last penalty of P.
-enum class Reason { None, Physics, Kinematics, Impossible, Pose };
+/**
+ * Which check an implausible state is owed to. The vocabulary follows the misbehaviour-detection
+ * literature, where the dividing line is how many messages a check needs:
+ *
+ *   PLAUSIBILITY  one message against an absolute or environmental bound — "is the advertised speed
+ *                 below a predefined threshold", "is the station in a coherent place" [Kamel et al., CaTch].
+ *   CONSISTENCY   across messages, over time from one sender or across senders [van der Heijden et al.,
+ *                 IEEE Surveys 2019; LA-DETECTS].
+ *
+ * Our previous work called the two consistency checks "phase 0" and "phase 1" and grouped them under
+ * "plausibility", which inverts the literature: both compare successive vectors of one stream, so both are
+ * consistency, while the single-message bounds it called "impossible" are the plausibility checks.
+ */
+enum class Reason {
+    None,
+    SpeedPlausibility,      // one message: speed outside [0, maxSpeed], or values that cannot be evaluated
+    RangePlausibility,      // one message: a perceived object outside its author's sensing geometry
+    PosSpeedConsistency,    // two successive vectors: implied displacement speed vs reported speed
+    TrajectoryConsistency,  // the window: OLS-CTRA prediction error vs the manoeuvre budget d_max
+    PoseConsistency,        // a CPM's declared pose vs the same station's own CAM stream
+};
 
 /**
  * Paper 1's counterless Beta update (Sec. IV-B): pseudo-counts are rebuilt from the previous score with a fixed
  * prior weight, the evidence is added, and the posterior mean is the new score. With no evidence the score
- * drifts back towards 0.5, so corroboration expires when no one confirms a claim any more.
+ * drifts back towards 0.5, so a stream that brings no evidence loses its support over time.
  */
 inline double counterlessUpdate(double score, double support, double contradiction, double priorWeight)
 {
@@ -48,11 +69,12 @@ inline const char* toString(ClaimKind kind)
 inline const char* toString(Reason reason)
 {
     switch (reason) {
-        case Reason::None:       return "none";
-        case Reason::Physics:    return "physics";      // Paper 1 phase 0 (implied vs reported speed, frozen position)
-        case Reason::Kinematics: return "kinematics";   // Paper 1 phase 1 (OLS-CTRA prediction)
-        case Reason::Impossible: return "impossible";   // an object report that cannot be physical
-        case Reason::Pose:       return "pose";         // CPM reference pose vs the author's CAM track
+        case Reason::None:                  return "none";
+        case Reason::SpeedPlausibility:     return "speed_plausibility";
+        case Reason::RangePlausibility:     return "range_plausibility";
+        case Reason::PosSpeedConsistency:   return "pos_speed_consistency";   // previously "phase 0"
+        case Reason::TrajectoryConsistency: return "trajectory_consistency";  // previously "phase 1"
+        case Reason::PoseConsistency:       return "pose_consistency";
     }
     return "unknown";
 }
@@ -60,9 +82,8 @@ inline const char* toString(Reason reason)
 inline const char* toString(ClaimState state)
 {
     switch (state) {
-        case ClaimState::Corroborated:   return "corroborated";
-        case ClaimState::Uncorroborated: return "uncorroborated";
-        case ClaimState::Implausible:    return "implausible";
+        case ClaimState::Plausible:   return "plausible";
+        case ClaimState::Implausible: return "implausible";
     }
     return "unknown";
 }

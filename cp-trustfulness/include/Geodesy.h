@@ -130,7 +130,6 @@ struct GridFrame {
     }
 
     double toTrueHeading(double gridHeadingDeg) const { return Geodesy::wrap360(gridHeadingDeg + northBearingDeg); }
-    double toGridHeading(double trueHeadingDeg) const { return Geodesy::wrap360(trueHeadingDeg - northBearingDeg); }
 };
 }  // namespace artery
 

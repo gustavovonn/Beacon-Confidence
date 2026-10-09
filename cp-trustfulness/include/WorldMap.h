@@ -3,50 +3,56 @@
 
 #include "CpmTypes.h"
 #include "Geodesy.h"
+#include <algorithm>
 #include <cmath>
-#include <deque>
 #include <map>
 #include <set>
-#include <tuple>
+#include <utility>
 
 namespace artery {
 
-/// Who made a statement about a track.
-enum class SourceKind { Cam, Cpm };
-
-/// One statement about a track, kept with its source (provenance). Nothing is fused away.
-struct LdmContribution {
-    StationId station = 0;   ///< Cam: the sender (the body itself); Cpm: the author
-    SourceKind kind = SourceKind::Cpm;
-    uint32_t localId = 0;    ///< Cpm: CPM object id; Cam: 0
-    ObjectClaim claim;       ///< time, position (centre), velocity
-};
-
-/// One physical object the receiver believes may exist.
-struct LdmTrack {
-    uint64_t id = 0;
-    StationId identity = -1;  ///< the station whose CAM describes this body, -1 if anonymous
-    std::deque<LdmContribution> contributions;  ///< time-ordered, all sources, last `retention` seconds
-    LdmContribution latest;                     ///< most recent statement (any source)
-    std::map<std::pair<int, StationId>, double> lastBy;  ///< (source kind, station) -> time of its latest statement
-    double lastUpdate = -1.0;
+/// One admitted motion vector, with the station that produced it.
+struct LdmVector {
+    StationId station = 0;  ///< the CAM sender, or the CPM author
+    ObjectClaim claim;      ///< time, position (centre), velocity
 };
 
 /**
- * @brief Local Dynamic Map (LDM) of one receiver: one track per physical object, with provenance.
+ * One object hypothesis: the receiver's guess that a set of claim streams are describing the same body.
  *
- * Every CAM (the sender's body) and every admissible CPM object is attached to a
- * track: first by continuity (the same source kept the same local id or station), then by the nearest track
- * inside the gate, else a new track. Contributions keep their source, so a claim can be compared with what
- * OTHER sources say about the same physical object (leave-one-out).
+ * This is an ASSOCIATION CACHE ENTRY, not an estimate. `reference` is the latest admitted vector, kept
+ * only so the next vector has something to be gated against; nothing is blended into it and no residual
+ * is ever measured against it. Plausibility is judged by each claim stream against its OWN history, where
+ * the author's positioning bias cancels; the hypothesis exists only to answer which streams may be
+ * talking about the same body, and therefore who corroborates whom.
+ *
+ * The hypothesis carries no confidence. Confidence lives on the claim streams, outside this map.
+ */
+struct LdmTrack {
+    StationId identity = -1;               ///< the station whose CAM describes this body, -1 if anonymous
+    LdmVector reference;                   ///< the latest admitted vector: what new vectors are gated against
+    std::map<StationId, double> admitted;  ///< station -> time of its last admitted vector; the contributor set
+    double lastAdmission = -1.0;
+};
+
+/**
+ * @brief Receiver-local association cache: one hypothesis per apparent physical object.
+ *
+ * A hypothesis stores only what association and corroboration need: the latest admitted vector and the
+ * time each station last fed it. It is dropped when nobody feeds it for `lifetime` seconds.
+ *
+ * Deliberately absent: state fusion, a fused trajectory, a per-hypothesis variance and a per-hypothesis
+ * score. Fusion was measured to break the intra-source comparisons that plausibility depends on, and is
+ * deferred to a separate study (`docs/fusion_study_issue.md`).
  */
 class WorldMap {
 public:
     static constexpr uint64_t kFirstTrackId = uint64_t(1) << 20;  ///< above every CPM object id
 
-    explicit WorldMap(double retention = 4.0) : m_retention(retention) {}
+    explicit WorldMap(double lifetime = 1.1) : m_lifetime(lifetime) {}
 
-    /// The CAM sender's own body (centre).
+    /// An admitted CAM vector: the sender's own body. A self-report is the only admissible anchor for its
+    /// own body, so it always becomes the reference.
     uint64_t addCam(StationId station, const KinematicState& centre)
     {
         ObjectClaim c;
@@ -65,13 +71,13 @@ public:
             m_tracks[id].identity = station;
             m_bodies[station] = id;
         }
-        append(id, LdmContribution{station, SourceKind::Cam, 0, c});
+        admit(id, LdmVector{station, c});
         return id;
     }
 
     /**
-     * An admissible CPM object (aligned to its CPM time). `resolvedTo` is the CAM station it was resolved to
-     * (-1 if unresolved). Returns the track, or 0 if the object is the receiver itself (`receiver`).
+     * An admitted CPM object vector (aligned to its CPM time). `resolvedTo` is the CAM station it was
+     * resolved to (-1 if unresolved). Returns the hypothesis, or 0 if the object is the receiver itself.
      */
     uint64_t addObject(const ObjectClaim& claim, StationId resolvedTo, StationId receiver, double gate)
     {
@@ -85,18 +91,18 @@ public:
                 id = body->second;
             }
         }
-        const auto key = std::make_tuple(static_cast<int>(SourceKind::Cpm), claim.author, static_cast<uint32_t>(claim.objectId));
+        const ContinuityKey key{claim.author, static_cast<uint32_t>(claim.objectId)};
         if (id == 0) {
             id = continuing(key, claim.position, claim.time, gate);
         }
         if (id == 0) {
-            id = nearest(claim.position, claim.time, gate, claim.author, SourceKind::Cpm);
+            id = nearest(claim.position, claim.time, gate, claim.author);
         }
         if (id == 0) {
             id = create();
         }
         m_continuity[key] = id;
-        append(id, LdmContribution{claim.author, SourceKind::Cpm, claim.objectId, claim});
+        admit(id, LdmVector{claim.author, claim});
         return id;
     }
 
@@ -106,23 +112,21 @@ public:
         return it == m_tracks.end() ? nullptr : &it->second;
     }
 
-    /**
-     * Number of distinct stations, other than `excluded`, whose CAM or CPM put a statement on the track during
-     * [t0, t1]: the independent confirmations of a claim about this object.
-     */
+
+
+    /// Number of distinct stations, other than `excluded`, with an admitted vector on the hypothesis
+    /// during [t0, t1]. This is the corroboration count: unique stations, never reports.
     int independentSources(uint64_t id, const std::set<StationId>& excluded, double t0, double t1) const
     {
         const LdmTrack* t = track(id);
         if (!t) {
             return 0;
         }
-        std::set<StationId> sources;
-        for (const LdmContribution& c : t->contributions) {
-            if (!excluded.count(c.station) && c.claim.time >= t0 && c.claim.time <= t1) {
-                sources.insert(c.station);
-            }
+        int n = 0;
+        for (const auto& entry : t->admitted) {
+            n += !excluded.count(entry.first) && entry.second >= t0 && entry.second <= t1;
         }
-        return static_cast<int>(sources.size());
+        return n;
     }
 
     size_t size() const { return m_tracks.size(); }
@@ -130,11 +134,7 @@ public:
     void evict(double now)
     {
         for (auto it = m_tracks.begin(); it != m_tracks.end();) {
-            auto& list = it->second.contributions;
-            while (!list.empty() && now - list.front().claim.time > m_retention) {
-                list.pop_front();
-            }
-            it = list.empty() ? m_tracks.erase(it) : std::next(it);
+            it = (now - it->second.lastAdmission > m_lifetime) ? m_tracks.erase(it) : std::next(it);
         }
         for (auto it = m_continuity.begin(); it != m_continuity.end();) {
             it = m_tracks.count(it->second) ? std::next(it) : m_continuity.erase(it);
@@ -145,30 +145,36 @@ public:
     }
 
 private:
-    using ContinuityKey = std::tuple<int, StationId, uint32_t>;
+    using ContinuityKey = std::pair<StationId, uint32_t>;
 
-    static GeoPoint positionAt(const LdmContribution& c, double time)
+    static GeoPoint positionAt(const LdmVector& v, double time)
     {
-        return c.claim.hasVelocity ? Geodesy::project(c.claim.position, c.claim.speed, c.claim.heading, time - c.claim.time)
-                                   : c.claim.position;
+        return v.claim.hasVelocity ? Geodesy::project(v.claim.position, v.claim.speed, v.claim.heading, time - v.claim.time)
+                                   : v.claim.position;
     }
 
     uint64_t create()
     {
         const uint64_t id = kFirstTrackId + m_next++;
-        m_tracks[id].id = id;
+        m_tracks[id];  // default-construct the hypothesis
         return id;
     }
 
-    void append(uint64_t id, const LdmContribution& c)
+    /**
+     * Record an admitted vector. The contribution is always recorded, because a late vector is still
+     * evidence that its author saw the object; but a vector OLDER than the current reference does not move
+     * the anchor, since the anchor's only job is to gate what comes next. Blending is deliberately absent.
+     */
+    void admit(uint64_t id, const LdmVector& v)
     {
         LdmTrack& t = m_tracks[id];
-        t.contributions.push_back(c);
-        if (c.claim.time >= t.lastUpdate) {
-            t.latest = c;
-            t.lastUpdate = c.claim.time;
+        const double time = v.claim.time;
+        const bool first = t.lastAdmission < 0.0;
+        t.admitted[v.station] = std::max(t.admitted[v.station], time);
+        t.lastAdmission = std::max(t.lastAdmission, time);
+        if (first || time >= t.reference.claim.time) {
+            t.reference = v;
         }
-        t.lastBy[{static_cast<int>(c.kind), c.station}] = c.claim.time;
     }
 
     uint64_t continuing(const ContinuityKey& key, const GeoPoint& p, double time, double gate) const
@@ -181,13 +187,13 @@ private:
         if (t == m_tracks.end()) {
             return 0;
         }
-        return Geodesy::distance(positionAt(t->second.latest, time), p) <= gate ? it->second : 0;
+        return Geodesy::distance(positionAt(t->second.reference, time), p) <= gate ? it->second : 0;
     }
 
-    /// Nearest track within the gate at `time`, excluding tracks the same source already feeds with another
-    /// statement in the last 0.5 s (one source does not report one object twice). CAM bodies are no candidates:
-    /// CPM objects join a body through resolution against the CAM track.
-    uint64_t nearest(const GeoPoint& p, double time, double gate, StationId station, SourceKind kind) const
+    /// Anonymous hypothesis with the nearest reference within the gate, not fed by `author` in the last
+    /// 0.5 s (one author does not report one object twice). CAM bodies are no candidates: objects join a
+    /// body through resolution, not through proximity.
+    uint64_t nearest(const GeoPoint& p, double time, double gate, StationId author) const
     {
         uint64_t best = 0;
         double bestDist = gate;
@@ -196,14 +202,11 @@ private:
             if (t.identity >= 0) {
                 continue;
             }
-            auto last = t.lastBy.find({static_cast<int>(kind), station});
-            if (last != t.lastBy.end() && std::abs(last->second - time) < 0.5) {
-                continue;  // busy: the same source already feeds this track with another statement
-            }
-            if (std::abs(t.latest.claim.time - time) > m_retention) {
+            auto last = t.admitted.find(author);
+            if (last != t.admitted.end() && std::abs(last->second - time) < 0.5) {
                 continue;
             }
-            const double d = Geodesy::distance(positionAt(t.latest, time), p);
+            const double d = Geodesy::distance(positionAt(t.reference, time), p);
             if (d <= bestDist) {
                 bestDist = d;
                 best = entry.first;
@@ -212,7 +215,7 @@ private:
         return best;
     }
 
-    double m_retention;
+    double m_lifetime;
     uint64_t m_next = 1;
     std::map<uint64_t, LdmTrack> m_tracks;
     std::map<ContinuityKey, uint64_t> m_continuity;

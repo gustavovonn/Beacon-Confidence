@@ -28,7 +28,8 @@ template <typename CoordPolicy>
 inline PhysicalInvarianceResult checkPhysicalInvariants(
     const KinematicState& pastState,
     const KinematicState& currentState,
-    double speedToleranceMps = ConstantsPhysics::DEFAULT_SPEED_TOLERANCE_MPS)
+    double speedToleranceMps = ConstantsPhysics::DEFAULT_SPEED_TOLERANCE_MPS,
+    double minInterFrameTime = ConstantsPhysics::MIN_INTER_FRAME_TIME)
 {
     PhysicalInvarianceResult res;
 
@@ -46,9 +47,13 @@ inline PhysicalInvarianceResult checkPhysicalInvariants(
     double speedDiscrepancy = 0.0;
 
     // Only evaluate inter-frame physical invariance on valid consecutive transmissions:
-    // (1) dt_raw >= MIN_INTER_FRAME_TIME: rejects duplicate receptions across multiple receiver logs (ETSI EN 302 637-2)
+    // (1) dt_raw >= minInterFrameTime: a duplicate guard, NOT a physics constant. The 0.2 s default exists
+    //     because the VeReMi dataset repeats one message across several receiver logs, so Paper 1's ingestion
+    //     had to skip repeats. In a simulator each receiver sees each message once, and a 0.2 s floor instead
+    //     suppresses phase 0 exactly when a vehicle manoeuvres and its CAM rate rises to 10 Hz. Callers that
+    //     do not read a VeReMi trace should pass their own duplicate threshold.
     // (2) dt_raw <= MAX_INTER_FRAME_TIME: ignores large communication gaps where kinematics are discontinuous (F2MD MAX_TIME_DELTA)
-    if (dt_raw >= ConstantsPhysics::MIN_INTER_FRAME_TIME && dt_raw <= ConstantsPhysics::MAX_INTER_FRAME_TIME) {
+    if (dt_raw >= minInterFrameTime && dt_raw <= ConstantsPhysics::MAX_INTER_FRAME_TIME) {
         const double avgReportedSpeed = 0.5 * (currentState.speed + pastState.speed);
         speedDiscrepancy = std::abs(avgReportedSpeed - impliedSpeed);
         const bool speedFalsified = (speedDiscrepancy > speedTolerance);

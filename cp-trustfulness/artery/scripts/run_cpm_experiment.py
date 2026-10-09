@@ -8,9 +8,9 @@ through PARAMS (unknown keys are an error), and run once per seed inside the `ar
 own vehicles.xml and result files under results/cpm_experiments/exp_<timestamp>_<tag>/runs/<id>_s<seed>/.
 
 Metrics (per message, as in Paper 1; honest receivers only, after the warm-up), for CAMs and CPM objects:
-  flagged       implausible (P < 0.5): precision, recall, F1, FPR over messages
-  corroborated  C >= 0.58 (other authors reported the same object): share of honest messages (coverage of the
-                confirmation) and of falsified messages (false content that others happened to confirm)
+  flagged       implausible (confidence < 0.5), with corroboration ("") and without it ("_base", evaluation only):
+                precision, recall, F1, FPR over messages
+  confirmed     admitted and confirmed by at least one other station: share of honest and of falsified messages
 """
 
 import os
@@ -46,9 +46,12 @@ ARTERY_DIR = os.path.join(WORKSPACE_DIR, "cp-trustfulness", "artery")
 RESULTS_DIR = os.path.join(ARTERY_DIR, "results", "cpm_experiments")
 CONTAINER = "artery"
 CONTAINER_ARTERY_DIR = "/workspace/cp-trustfulness/artery"
+# Build tree used inside the container. An optimised tree (-O2 -g, assertions kept) can be selected with
+# ARTERY_BUILD_DIR=/workspace/build-opt; the default stays the Debug tree.
+CONTAINER_BUILD_DIR = os.environ.get("ARTERY_BUILD_DIR", "/workspace/build")
 
 # Keys handled by the runner itself (not OMNeT parameters)
-RUNNER_KEYS = {"id", "description", "scenario", "time_limit", "seeds", "faulty_rate"}
+RUNNER_KEYS = {"id", "description", "scenario", "time_limit", "seeds", "faulty_rate", "context_log"}
 
 # YAML key -> (middleware submodule, NED parameter, kind); kind in {"str", "bool", "num", "m", "s"}
 PARAMS = {
@@ -58,13 +61,13 @@ PARAMS = {
     "fault_profile":         ("CA", "faultMode", "str"),             # const_speed, const_speed_offset, random_speed, random_speed_offset
     "fault_magnitude":       ("CA", "faultMagnitude", "m"),          # Paper 1's CAM position faults only
     "fault_start_time":      ("CA", "faultStartTime", "s"),
-    "cpm_fault_profile":     ("CP", "cpmFaultMode", "str"),          # ghost, object_const_offset, object_random_offset
-    "cpm_fault_magnitude":   ("CP", "cpmFaultMagnitude", "m"),
+    "cpm_fault_profile":     ("CP", "cpmFaultMode", "str"),          # object_const_offset, object_random_offset
     "cpm_fault_start_time":  ("CP", "cpmFaultStartTime", "s"),
     # error models of every station (cp-trustfulness/include/ErrorModels.h)
     "gnss_error_model":      ("Noise", "gnssErrorModel", "str"),     # veremi | none
     "radar_error_model":     ("Noise", "radarErrorModel", "str"),    # jacobs | none
     # components (ablation)
+    "enable_cpm":              ("DR", "enableCpm", "bool"),
     "enable_peers":             ("DR", "enablePeers", "bool"),
     "enable_pose_check":        ("DR", "enablePoseCheck", "bool"),
     "enable_admissibility":     ("DR", "enableAdmissibility", "bool"),
@@ -78,17 +81,18 @@ PARAMS = {
     "peer_support":       ("DR", "peerSupport", "num"),
     "inclusion_period":   ("DR", "inclusionPeriod", "s"),
     "implausible_below":  ("DR", "implausibleBelow", "num"),
-    "corroborated_from":  ("DR", "corroboratedFrom", "num"),
     "max_object_range":   ("DR", "maxObjectRange", "num"),
     # resolution and gating
     "max_sync_dt":        ("DR", "maxSyncDt", "s"),
     "kappa_gate":         ("DR", "kappaGate", "num"),
+    "association_engine": ("DR", "associationEngine", "str"),
     # metrics
     "metrics_warmup":     ("DR", "metricsWarmup", "s"),
 }
 
 KINDS = ("cam", "object")
-REASONS = ("physics", "kinematics", "impossible", "pose")  # which component a flag is owed to
+REASONS = ("speed_plausibility", "range_plausibility", "pos_speed_consistency",
+           "trajectory_consistency", "pose_consistency")  # which check a flag is owed to
 
 
 def format_value(value: Any, kind: str) -> str:
@@ -152,15 +156,17 @@ def compute_metrics(s: Dict[str, float]) -> Dict[str, float]:
     for kind in KINDS:
         n_honest, n_false = g(f"cl_{kind}_honest_n"), g(f"cl_{kind}_falsified_n")
         m[f"{kind}_honest_n"], m[f"{kind}_falsified_n"] = n_honest, n_false
-        tp, fp = g(f"cl_{kind}_falsified_flagged"), g(f"cl_{kind}_honest_flagged")
-        precision, recall = ratio(tp, tp + fp), ratio(tp, n_false)
-        m[f"{kind}_recall"] = recall
-        m[f"{kind}_precision"] = precision
-        m[f"{kind}_fpr"] = ratio(fp, n_honest)
-        m[f"{kind}_f1"] = 2 * precision * recall / (precision + recall) if precision + recall > 0 else float("nan")
+        for tag, counter in (("", "flagged"), ("_base", "flagged_base")):
+            tp, fp = g(f"cl_{kind}_falsified_{counter}"), g(f"cl_{kind}_honest_{counter}")
+            precision, recall = ratio(tp, tp + fp), ratio(tp, n_false)
+            m[f"{kind}_recall{tag}"] = recall
+            m[f"{kind}_precision{tag}"] = precision
+            m[f"{kind}_fpr{tag}"] = ratio(fp, n_honest)
+            m[f"{kind}_f1{tag}"] = (2 * precision * recall / (precision + recall)
+                                    if precision + recall > 0 else float("nan"))
         for label, n in (("honest", n_honest), ("falsified", n_false)):
-            m[f"{kind}_{label}_corroborated"] = ratio(g(f"cl_{kind}_{label}_corroborated"), n)
-            m[f"{kind}_{label}_peer_confirmed"] = ratio(g(f"cl_{kind}_{label}_peer_confirmed"), n)
+            m[f"{kind}_{label}_admitted"] = ratio(g(f"cl_{kind}_{label}_admitted"), n)
+            m[f"{kind}_{label}_confirmed"] = ratio(g(f"cl_{kind}_{label}_confirmed"), n)
         for label in ("falsified", "honest"):
             flagged = g(f"cl_{kind}_{label}_flagged")
             for reason in REASONS:
@@ -169,6 +175,10 @@ def compute_metrics(s: Dict[str, float]) -> Dict[str, float]:
     m["assoc_resolved_share"] = ratio(g("assoc_tp") + g("assoc_fp"), assoc_all)
     m["assoc_precision"] = ratio(g("assoc_tp"), g("assoc_tp") + g("assoc_fp"))
     m["assoc_recall"] = ratio(g("assoc_tp"), g("assoc_tp") + g("assoc_fn"))
+    # Share of the corroboration granted that rests on a resolution ground truth contradicts: the bound on how far
+    # the corroboration reward can be gained by association error rather than by a genuine second observer.
+    m["assoc_corr_misassoc_share"] = ratio(g("assoc_corr_misassoc"), g("assoc_corr_events"))
+    m["assoc_corr_falsified"] = g("assoc_corr_falsified")
     m["cpms_received"] = g("cpms_received")
     m["invalid_cpms"] = g("fault_invalid_cpms") + g("noise_invalid_cpms")
     return m
@@ -196,20 +206,25 @@ def execute_run(cfg: Dict[str, Any], seed: int, run_dir: str, dry_run: bool) -> 
         f"--output-vector-file={rel_dir}/results.vec",
         "--**.vector-recording=false",  # Artery's generic vectors are large and unused here
         f'--*.node[*].middleware.DR.claimRecordFile=\\"{rel_dir}/claims.csv\\"',
-    ] + omnet_overrides(cfg)
+    ] + (
+        # d_max tuning only: one row per evaluated phase 0 / phase 1 comparison. Off unless asked for,
+        # because it is one row per vector rather than one per sampled interval.
+        [f'--*.node[*].middleware.DR.contextRecordFile=\\"{rel_dir}/context.csv\\"']
+        if cfg.get("context_log") else []
+    ) + omnet_overrides(cfg)
 
     script = f"""
         cd {CONTAINER_ARTERY_DIR} || exit 1
-        INI_LIBS=$(grep '^libraries =' /workspace/build/artery/run-artery.ini | cut -d'=' -f2- || true)
-        INI_NED=$(grep '^nedFolders =' /workspace/build/artery/run-artery.ini | cut -d'=' -f2- || true):{CONTAINER_ARTERY_DIR}
-        LD_LIBRARY_PATH=/workspace/build/artery:/workspace/build/artery/src/artery/envmod:/workspace/build/artery/src/traci:/workspace/build/artery/extern:/workspace/build/cp-trustfulness/artery:$LD_LIBRARY_PATH \\
+        INI_LIBS=$(grep '^libraries =' {CONTAINER_BUILD_DIR}/artery/run-artery.ini | cut -d'=' -f2- || true)
+        INI_NED=$(grep '^nedFolders =' {CONTAINER_BUILD_DIR}/artery/run-artery.ini | cut -d'=' -f2- || true):{CONTAINER_ARTERY_DIR}
+        LD_LIBRARY_PATH={CONTAINER_BUILD_DIR}/artery:{CONTAINER_BUILD_DIR}/artery/src/artery/envmod:{CONTAINER_BUILD_DIR}/artery/src/traci:{CONTAINER_BUILD_DIR}/artery/extern:{CONTAINER_BUILD_DIR}/cp-trustfulness/artery:$LD_LIBRARY_PATH \\
         opp_run \\
-            -l /workspace/build/artery/src/artery/envmod/libartery_envmod.so \\
+            -l {CONTAINER_BUILD_DIR}/artery/src/artery/envmod/libartery_envmod.so \\
             $INI_LIBS \\
             -n $INI_NED \\
             -u Cmdenv \\
             -c {cfg['scenario']} \\
-            -l /workspace/build/cp-trustfulness/artery/libartery_cp_trustfulness.so \\
+            -l {CONTAINER_BUILD_DIR}/cp-trustfulness/artery/libartery_cp_trustfulness.so \\
             {' '.join(f'"{o}"' for o in overrides)} \\
             omnetpp.ini
     """
@@ -293,15 +308,16 @@ def write_run_report(run_dir: str, row: Dict[str, Any], cfg: Dict[str, Any]):
     s = read_scalars(sca)
     g = lambda k: s.get(k, 0.0)
     lines += ["## Messages judged by honest receivers", "",
-              "| | honest | falsified | flagged honest | flagged falsified | F1 | FPR "
-              "| corroborated honest | corroborated falsified |",
-              "| :--- | ---: | ---: | ---: | ---: | :---: | :---: | :---: | :---: |"]
+              "| | honest | falsified | F1 without / with corroboration | FPR without / with "
+              "| confirmed honest | confirmed falsified |",
+              "| :--- | ---: | ---: | :---: | :---: | :---: | :---: |"]
     for kind in KINDS:
         h = lambda c: g(f"cl_{kind}_honest_{c}")
         x = lambda c: g(f"cl_{kind}_falsified_{c}")
-        lines.append(f"| {kind} | {h('n'):.0f} | {x('n'):.0f} | {h('flagged'):.0f} | {x('flagged'):.0f} "
-                     f"| {fmt(row.get(f'{kind}_f1'), False)} | {fmt(row.get(f'{kind}_fpr'))} "
-                     f"| {fmt(row.get(f'{kind}_honest_corroborated'))} | {fmt(row.get(f'{kind}_falsified_corroborated'))} |")
+        lines.append(f"| {kind} | {h('n'):.0f} | {x('n'):.0f} "
+                     f"| {fmt(row.get(f'{kind}_f1_base'), False)} / {fmt(row.get(f'{kind}_f1'), False)} "
+                     f"| {fmt(row.get(f'{kind}_fpr_base'))} / {fmt(row.get(f'{kind}_fpr'))} "
+                     f"| {fmt(row.get(f'{kind}_honest_confirmed'))} | {fmt(row.get(f'{kind}_falsified_confirmed'))} |")
     lines += ["", "## Association", "", "| metric | value |", "| :--- | :---: |",
               f"| resolved right / wrong | {g('assoc_tp'):.0f} / {g('assoc_fp'):.0f} |",
               f"| unresolved but resolvable / correctly unresolved | {g('assoc_fn'):.0f} / {g('assoc_tn'):.0f} |",
@@ -319,14 +335,16 @@ def write_report(rows: List[Dict[str, Any]], path: str, header: Dict[str, str]):
     for k, v in header.items():
         lines.append(f"- **{k}:** `{v}`")
     lines += ["", "Per message, honest receivers, after the warm-up; mean over successful seeds ± the 95 % Student-t "
-              "half-width. **flagged** = implausible (P < 0.5); **corroborated** = C >= 0.58, share of honest / "
-              "falsified messages confirmed by other authors.", ""]
+              "half-width. **flagged** = implausible (confidence < 0.5); **base** = the same without corroboration "
+              "evidence; **confirmed** = share of messages admitted and confirmed by at least one other station.", ""]
     columns = []
     for kind in KINDS:
-        columns += [(f"{kind}_f1", f"{kind} F1", False), (f"{kind}_fpr", f"{kind} FPR", True),
-                    (f"{kind}_honest_corroborated", f"{kind} corroborated honest", True),
-                    (f"{kind}_falsified_corroborated", f"{kind} corroborated falsified", True)]
+        columns += [(f"{kind}_f1_base", f"{kind} F1 base", False), (f"{kind}_f1", f"{kind} F1", False),
+                    (f"{kind}_fpr_base", f"{kind} FPR base", True), (f"{kind}_fpr", f"{kind} FPR", True),
+                    (f"{kind}_honest_confirmed", f"{kind} confirmed honest", True),
+                    (f"{kind}_falsified_confirmed", f"{kind} confirmed falsified", True)]
     columns.append(("assoc_precision", "assoc prec", True))
+    columns.append(("assoc_corr_misassoc_share", "corrob on mis-assoc", True))
     blocks: Dict[str, List[Dict[str, Any]]] = {}
     for r in rows:
         blocks.setdefault(r["block"], []).append(r)
@@ -353,7 +371,7 @@ def write_report(rows: List[Dict[str, Any]], path: str, header: Dict[str, str]):
         # attribution: which component each flag is owed to (share of the flagged messages, mean over seeds)
         lines += ["", "Why flagged (share of flagged messages, " + " / ".join(REASONS) + "); association:", "",
                   "| id | CAM falsified | CAM honest (false positives) | object falsified | object honest (false positives) "
-                  "| objects resolved | assoc precision / recall |",
+                  "| objects resolved | assoc precision / recall | corrob on mis-assoc | corrob to falsified |",
                   "| :--- | :---: | :---: | :---: | :---: | :---: | :---: |"]
         for run_id in ids:
             runs = [r for r in block_rows if r["id"] == run_id]
@@ -361,7 +379,9 @@ def write_report(rows: List[Dict[str, Any]], path: str, header: Dict[str, str]):
             lines.append(f"| `{run_id}` | {share('cam', 'falsified')} | {share('cam', 'honest')} "
                          f"| {share('object', 'falsified')} | {share('object', 'honest')} "
                          f"| {fmt(aggregate(runs, 'assoc_resolved_share')['mean'])} "
-                         f"| {fmt(aggregate(runs, 'assoc_precision')['mean'])} / {fmt(aggregate(runs, 'assoc_recall')['mean'])} |")
+                         f"| {fmt(aggregate(runs, 'assoc_precision')['mean'])} / {fmt(aggregate(runs, 'assoc_recall')['mean'])} "
+                         f"| {fmt(aggregate(runs, 'assoc_corr_misassoc_share')['mean'])} "
+                         f"| {aggregate(runs, 'assoc_corr_falsified')['mean']:.0f} |")
         lines.append("")
     with open(path, "w") as f:
         f.write("\n".join(lines) + "\n")
@@ -512,9 +532,9 @@ def main():
         print(f"  -> [{block}] {run_id} seed {seed} started", flush=True)
         metrics = execute_run(merged, seed, os.path.join(exp_dir, "runs", f"{run_id}_s{seed}"), args.dry_run)
         if metrics:
-            print(f"     [{run_id} s{seed}] CAM F1 {fmt(metrics['cam_f1'], False)}  "
-                  f"object F1 {fmt(metrics['object_f1'], False)}  "
-                  f"honest CAMs corroborated {fmt(metrics['cam_honest_corroborated'])}  ({metrics['wall_time_s']:.0f}s)",
+            print(f"     [{run_id} s{seed}] CAM F1 {fmt(metrics['cam_f1_base'], False)} -> {fmt(metrics['cam_f1'], False)}  "
+                  f"object F1 {fmt(metrics['object_f1_base'], False)} -> {fmt(metrics['object_f1'], False)}  "
+                  f"honest CAMs confirmed {fmt(metrics['cam_honest_confirmed'])}  ({metrics['wall_time_s']:.0f}s)",
                   flush=True)
         return {"block": block, "id": run_id, "seed": seed, "status": "ok" if metrics else "failed",
                 "run_dir": os.path.join(exp_dir, "runs", f"{run_id}_s{seed}"),

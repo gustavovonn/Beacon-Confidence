@@ -40,10 +40,11 @@ Define_Module(CollectiveTrustService)
 
 CollectiveTrustService::~CollectiveTrustService() = default;
 
-TrustEngineParams CollectiveTrustService::readParams()
+CpTrustEngineParams CollectiveTrustService::readParams()
 {
-    TrustEngineParams p;
+    CpTrustEngineParams p;
     // components (ablation)
+    p.enableCpm = par("enableCpm").boolValue();
     p.enablePeers = par("enablePeers").boolValue();
     p.enablePoseCheck = par("enablePoseCheck").boolValue();
     p.enableAdmissibility = par("enableAdmissibility").boolValue();
@@ -52,7 +53,13 @@ TrustEngineParams CollectiveTrustService::readParams()
     p.kinematics.maxPosDev = par("maxPositionDeviation").doubleValue();
     p.kinematics.contextSpeedWeight = par("contextSpeedWeight").doubleValue();
     p.kinematics.contextYawWeight = par("contextYawWeight").doubleValue();
+    p.objectKinematics = p.kinematics;  // evidence policy and prior weight are shared
+    p.objectKinematics.maxPosDev = par("objectMaxPositionDeviation").doubleValue();
+    p.objectKinematics.contextSpeedWeight = par("objectContextSpeedWeight").doubleValue();
+    p.objectKinematics.contextYawWeight = par("objectContextYawWeight").doubleValue();
     p.kinematics.speedToleranceMps = par("speedTolerance").doubleValue();
+    p.minReportInterval = par("minReportInterval").doubleValue();
+    p.minSpeedCheckInterval = par("minSpeedCheckInterval").doubleValue();
     p.historySize = par("historySize").intValue();
     p.trackTimeout = par("trackTimeout").doubleValue();
     p.defaultVehicleLength = par("defaultVehicleLength").doubleValue();
@@ -62,9 +69,8 @@ TrustEngineParams CollectiveTrustService::readParams()
     p.peerSupport = par("peerSupport").doubleValue();
     p.inclusionPeriod = par("inclusionPeriod").doubleValue();
     p.implausibleBelow = par("implausibleBelow").doubleValue();
-    p.corroboratedFrom = par("corroboratedFrom").doubleValue();
 
-    p.maxObjectSpeed = par("maxObjectSpeed").doubleValue();
+    p.maxSpeed = par("maxSpeed").doubleValue();
     p.maxObjectRange = par("maxObjectRange").doubleValue();
 
     p.maxSyncDt = par("maxSyncDt").doubleValue();
@@ -92,17 +98,32 @@ void CollectiveTrustService::initialize()
     if (cModule* noise = getParentModule() ? getParentModule()->getSubmodule("Noise") : nullptr) {
         m_noise = dynamic_cast<SensorNoiseService*>(noise);
     }
-    m_engine = std::make_unique<TrustEngine>(readParams(),
+    m_engine = std::make_unique<CpTrustEngine>(readParams(),
                                              DeadReckoningModelFactory::create(par("drAlgorithm").stdstringValue()),
-                                             std::make_unique<GreedyAssociation>());
+                                             makeAssociationEngine(par("associationEngine").stdstringValue()));
     m_engine->setClaimSink([this](const ClaimResult& r) { onClaim(r); });
-
     m_cpmEncoding = parseCpmEncoding(par("cpmEncoding").stdstringValue());
     m_defaultLength = par("defaultVehicleLength").doubleValue();
     m_metricsInterval = par("metricsInterval").doubleValue();
     m_metricsWarmup = par("metricsWarmup").doubleValue();
     m_visualize = par("visualizeTrust").boolValue();
     m_claimRecordFile = par("claimRecordFile").stdstringValue();
+    m_contextRecordFile = par("contextRecordFile").stdstringValue();
+    if (!m_contextRecordFile.empty()) {
+        // Tuning only: the inputs and outcome of every evaluated phase 0 / phase 1 comparison.
+        m_engine->setContextSink([this](const ContextSample& c) {
+            sharedCsv(m_contextRecordFile,
+                      "time,receiver,kind,author,object_id,dt,speed,yaw_rate,dist_error,threshold,"
+                      "noise_variance,physics_failed,falsified")
+                << c.time << ',' << m_ego.station << ',' << toString(c.kind) << ',' << c.author << ','
+                << c.objectId << ',' << c.dt << ',' << c.speed << ',' << c.yawRate << ',' << c.distError << ','
+                << c.threshold << ',' << c.noiseVariance << ',' << (c.physicsFailed ? 1 : 0) << ','
+                << (c.kind == ClaimKind::Cam ? m_camFalsified
+                                             : EvaluationTruth::isFalsified(c.author, m_cpmReferenceTai))
+                << '\n';
+        });
+    }
+
 
     m_camSignal = cComponent::registerSignal("CamReceived");
     m_cpmSignal = cComponent::registerSignal("CpmReceived");
@@ -204,7 +225,7 @@ void CollectiveTrustService::handleCpm(cObject* obj)
     }
     m_objectsReceived += cpm.objects.size();
     m_cpmReferenceTai = cpm.referenceTaiMs;
-    const CpmOutcome outcome = m_engine->onCpm(cpm, ego);
+    const std::vector<ObjectOutcome> outcome = m_engine->onCpm(cpm, ego);
     recordAssociation(cpm, outcome);
 }
 
@@ -230,15 +251,21 @@ void CollectiveTrustService::onClaim(const ClaimResult& r)
     const int kind = r.kind == ClaimKind::Cam ? 0 : 1;
     const bool falsified = r.kind == ClaimKind::Cam
                                ? m_camFalsified
-                               : EvaluationTruth::isFalsifiedObject(r.author, m_cpmReferenceTai, r.objectId);
+                               // an object inherits its CPM's label: the fault shifts the whole container
+                               : EvaluationTruth::isFalsified(r.author, m_cpmReferenceTai);
     Outcomes& o = m_outcomes[kind][falsified ? 1 : 0];
     ++o.n;
     const bool flagged = r.state == ClaimState::Implausible;
+    const bool flaggedBase = r.stateBase == ClaimState::Implausible;
     o.flagged += flagged;
-    o.corroborated += r.state == ClaimState::Corroborated;
-    o.peerConfirmed += r.peers > 0 && m_engine->params().enablePeers;
+    o.flaggedBase += flaggedBase;
+    o.admitted += r.admitted;
+    o.confirmed += r.admitted && r.peers > 0;
     if (flagged) {
         ++o.reason[static_cast<size_t>(r.reason)];
+    }
+    if (flaggedBase) {
+        ++o.reasonBase[static_cast<size_t>(r.reason)];
     }
 
     if (m_claimRecordFile.empty()) {
@@ -251,11 +278,11 @@ void CollectiveTrustService::onClaim(const ClaimResult& r)
         return;
     }
     m_lastRecorded[key] = now;
-    sharedCsv(m_claimRecordFile, "time,receiver,author,kind,object_id,ldm_track,falsified,plausibility,corroboration,"
-                                 "peers,state,reason")
+    sharedCsv(m_claimRecordFile, "time,receiver,author,kind,object_id,ldm_track,falsified,admitted,confidence,"
+                                 "confidence_base,peers,state,state_base,reason")
         << now << ',' << m_ego.station << ',' << r.author << ',' << toString(r.kind) << ',' << r.objectId << ','
-        << r.ldmTrack << ',' << falsified << ',' << r.plausibility << ',' << r.corroboration << ',' << r.peers << ','
-        << toString(r.state) << ',' << toString(r.reason) << '\n';
+        << r.ldmTrack << ',' << falsified << ',' << r.admitted << ',' << r.confidence << ',' << r.confidenceBase << ','
+        << r.peers << ',' << toString(r.state) << ',' << toString(r.stateBase) << ',' << toString(r.reason) << '\n';
 }
 
 const CollectiveTrustService::GroundTruth& CollectiveTrustService::truthOf(StationId id)
@@ -293,22 +320,36 @@ const CollectiveTrustService::GroundTruth& CollectiveTrustService::truthOf(Stati
 }
 
 /// Resolution of anonymous objects against the identity each author recorded before adding errors. Falsified
-/// objects have no true identity and are left out.
-void CollectiveTrustService::recordAssociation(const CpmSnapshot& cpm, const CpmOutcome& outcome)
+/// objects have no true identity, and quarantined objects never enter resolution: both are left out.
+void CollectiveTrustService::recordAssociation(const CpmSnapshot& cpm, const std::vector<ObjectOutcome>& outcome)
 {
     if (!m_honestReceiver || simTime().dbl() < m_metricsWarmup) {
         return;
     }
     const double now = simTime().dbl();
-    for (size_t j = 0; j < cpm.objects.size() && j < outcome.admissible.size(); ++j) {
-        const ObjectClaim& o = cpm.objects[j];
-        if (!outcome.admissible[j] || EvaluationTruth::isFalsifiedObject(cpm.author, cpm.referenceTaiMs, o.objectId)) {
+    // One outcome per object, each carrying its own author and objectId, so there is no second sequence
+    // to walk in step with and no length to guard. An empty outcome (our own CPM) iterates zero times.
+    for (const ObjectOutcome& out : outcome) {
+        const int peers = out.peers;
+        // an object inherits its CPM's label: the fault shifts the whole container
+        if (!out.admitted || EvaluationTruth::isFalsified(cpm.author, cpm.referenceTaiMs)) {
+            // A falsified object resolved onto a real station's track collects corroboration it
+            // cannot deserve.
+            if (out.admitted && peers > 0 && out.resolvedTo >= 0) {
+                m_assoc.corrFalsified += static_cast<uint64_t>(peers);
+            }
             continue;
         }
-        const long truth = EvaluationTruth::objectStation(cpm.author, cpm.referenceTaiMs, o.objectId);
-        const StationId resolved = outcome.resolvedTo[j];
+        const long truth = EvaluationTruth::objectStation(cpm.author, cpm.referenceTaiMs, out.aligned.objectId);
+        const StationId resolved = out.resolvedTo;
         if (resolved >= 0) {
             truth == resolved ? ++m_assoc.tp : ++m_assoc.fp;
+            if (peers > 0) {
+                m_assoc.corrEvents += static_cast<uint64_t>(peers);
+                if (truth != resolved) {
+                    m_assoc.corrMisassoc += static_cast<uint64_t>(peers);
+                }
+            }
         } else {
             // resolvable = the true vehicle is the receiver, or a station whose honest CAM track the receiver holds
             bool resolvable = false;
@@ -330,9 +371,8 @@ void CollectiveTrustService::updateVisualization(StationId id, ClaimState state)
     }
     try {
         auto api = m_controller->getTraCI();
-        const libsumo::TraCIColor color = state == ClaimState::Implausible    ? libsumo::TraCIColor(255, 0, 0, 255)
-                                          : state == ClaimState::Corroborated ? libsumo::TraCIColor(0, 255, 0, 255)
-                                                                              : libsumo::TraCIColor(255, 255, 0, 255);
+        const libsumo::TraCIColor color = state == ClaimState::Implausible ? libsumo::TraCIColor(255, 0, 0, 255)
+                                                                           : libsumo::TraCIColor(0, 255, 0, 255);
         api->vehicle.setColor(truth.traciId, color);
     } catch (...) {
     }
@@ -349,10 +389,12 @@ void CollectiveTrustService::finish()
             const std::string prefix = std::string("cl_") + kinds[k] + "_" + labels[f] + "_";
             recordScalar((prefix + "n").c_str(), o.n);
             recordScalar((prefix + "flagged").c_str(), o.flagged);
-            recordScalar((prefix + "corroborated").c_str(), o.corroborated);
-            recordScalar((prefix + "peer_confirmed").c_str(), o.peerConfirmed);
+            recordScalar((prefix + "flagged_base").c_str(), o.flaggedBase);
+            recordScalar((prefix + "admitted").c_str(), o.admitted);
+            recordScalar((prefix + "confirmed").c_str(), o.confirmed);
             for (size_t i = 1; i < o.reason.size(); ++i) {
                 recordScalar((prefix + "reason_" + toString(static_cast<Reason>(i))).c_str(), o.reason[i]);
+                recordScalar((prefix + "reason_base_" + toString(static_cast<Reason>(i))).c_str(), o.reasonBase[i]);
             }
         }
     }
@@ -363,6 +405,9 @@ void CollectiveTrustService::finish()
     recordScalar("assoc_fp", m_assoc.fp);
     recordScalar("assoc_fn", m_assoc.fn);
     recordScalar("assoc_tn", m_assoc.tn);
+    recordScalar("assoc_corr_events", m_assoc.corrEvents);
+    recordScalar("assoc_corr_misassoc", m_assoc.corrMisassoc);
+    recordScalar("assoc_corr_falsified", m_assoc.corrFalsified);
 
     recordScalar("cams_received", m_camsReceived);
     recordScalar("cpms_received", m_cpmsReceived);

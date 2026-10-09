@@ -9,12 +9,16 @@
 
 #include "../../include/CpmTypes.h"
 #include "../../include/Geodesy.h"
+#include <artery/envmod/EnvironmentModelObstacle.h>
+#include <artery/envmod/GlobalEnvironmentModel.h>
 #include <artery/traci/Cast.h>
 #include <artery/utility/Geometry.h>
+#include <boost/geometry/algorithms/correct.hpp>
 #include <traci/API.h>
 #include <vanetza/asn1/cam.hpp>
 #include <vanetza/asn1/cpm.hpp>
 #include <cmath>
+#include <limits>
 #include <cstdint>
 #include <string>
 
@@ -183,6 +187,7 @@ inline GridFrame calibrateGrid(const traci::API& api, const traci::TraCIPosition
     frame.scale = Geodesy::norm(d) / 100.0;
     return frame;
 }
+
 
 }  // namespace artery
 

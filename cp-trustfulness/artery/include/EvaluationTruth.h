@@ -2,9 +2,13 @@
 #define EVALUATION_TRUTH_H_
 
 /**
- * EVALUATION ONLY. Which transmitted CPM content was falsified: a whole CPM (its reference position, and so every
- * object it places, or every object shifted) or single objects (a ghost), and which vehicle each perceived object
- * really is. Senders record it; receivers look it up to label what they receive. The confidence engine never sees it.
+ * EVALUATION ONLY. Which transmitted CPM content was falsified, and which vehicle each perceived object really
+ * is. Senders record it; receivers look it up to label what they receive. The confidence engine never sees it.
+ *
+ * Falsification is tracked per CPM, not per object, because every fault profile we implement shifts the whole
+ * container: `FaultyCpService` calls `shiftObjects()` over the entire Perceived Object Container and then marks
+ * the CPM. A per-object registry existed and was never written to, so it was removed. Adding a fault that
+ * corrupts only some objects of a CPM means bringing per-object labelling back.
  */
 
 #include <cstdint>
@@ -27,12 +31,6 @@ inline std::set<CpmKey>& falsifiedCpms()
     return registry;
 }
 
-inline std::set<ObjectKey>& falsifiedObjects()
-{
-    static std::set<ObjectKey> registry;
-    return registry;
-}
-
 inline uint64_t referenceTime(const vanetza::asn1::r2::Cpm& cpm)
 {
     uint64_t tai = 0;
@@ -46,14 +44,8 @@ inline void markFalsified(const vanetza::asn1::r2::Cpm& cpm)
     falsifiedCpms().insert(CpmKey{static_cast<long>(cpm->header.stationId), referenceTime(cpm)});
 }
 
-/// One object of this CPM is falsified.
-inline void markFalsifiedObject(const vanetza::asn1::r2::Cpm& cpm, uint16_t objectId)
-{
-    falsifiedObjects().insert(ObjectKey{static_cast<long>(cpm->header.stationId), referenceTime(cpm), objectId});
-}
-
 /// Which vehicle (station id) a perceived object really is, recorded by the author before any error is added;
-/// absent for objects that are no vehicle with a station id (e.g. a ghost).
+/// absent for objects that are no vehicle with a station id.
 inline std::map<ObjectKey, long>& objectStations()
 {
     static std::map<ObjectKey, long> registry;
@@ -83,9 +75,6 @@ inline void evictBefore(uint64_t referenceTai)
     for (auto it = falsifiedCpms().begin(); it != falsifiedCpms().end();) {
         it = it->second < referenceTai ? falsifiedCpms().erase(it) : std::next(it);
     }
-    for (auto it = falsifiedObjects().begin(); it != falsifiedObjects().end();) {
-        it = std::get<1>(*it) < referenceTai ? falsifiedObjects().erase(it) : std::next(it);
-    }
     for (auto it = objectStations().begin(); it != objectStations().end();) {
         it = std::get<1>(it->first) < referenceTai ? objectStations().erase(it) : std::next(it);
     }
@@ -94,11 +83,6 @@ inline void evictBefore(uint64_t referenceTai)
 inline bool isFalsified(long station, uint64_t referenceTai)
 {
     return falsifiedCpms().count(CpmKey{station, referenceTai}) > 0;
-}
-
-inline bool isFalsifiedObject(long station, uint64_t referenceTai, uint16_t objectId)
-{
-    return isFalsified(station, referenceTai) || falsifiedObjects().count(ObjectKey{station, referenceTai, objectId}) > 0;
 }
 
 }  // namespace EvaluationTruth

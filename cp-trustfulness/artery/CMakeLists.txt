@@ -2,7 +2,7 @@ add_artery_feature(cp_trustfulness
     ../src/DeadReckoningModels.cc
     ../src/TrustEvaluators.cc
     ../src/AssociationEngines.cc
-    ../src/TrustEngine.cc
+    ../src/CpTrustEngine.cc
     src/TrustService.cc
     src/FaultyCaService.cc
     src/FaultyCpService.cc

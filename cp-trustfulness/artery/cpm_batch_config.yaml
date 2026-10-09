@@ -4,8 +4,9 @@
 # Every key is either a runner key (scenario, time_limit, seeds, faulty_rate, description) or a parameter listed in
 # scripts/run_cpm_experiment.py::PARAMS. Unknown keys abort the run.
 #
-# Every run reports, per message, what plausibility flags (and the component behind every flag: physics,
-# kinematics, impossible report, CPM pose) and how often other authors corroborate honest and falsified content.
+# Every run reports, per message, the confidence of its claim stream with and without corroboration (the latter
+# evaluation only), the check behind every flag (physics, kinematics, impossible, pose) and how often honest
+# and falsified content is confirmed by other stations.
 #
 # Scenario: LuST (config [Config lust]) at 07:30, only the vehicles inside a 1.61 km² square (the size of VeReMi
 # Extension's LuST area, at its density). Prepare once inside the container: bash config/lust/make_state.sh.
@@ -17,7 +18,7 @@
 # uses the same taxonomy. 10 % of the vehicles are faulty for their whole trip, as in VeReMi / F2MD:
 #   position (GNSS level, CAM and CPM alike)  const_pos, const_pos_offset, random_pos, random_pos_offset
 #   speed (CAM speed field)                   const_speed, const_speed_offset, random_speed, random_speed_offset
-#   CPM objects                               ghost (attack), object_const_offset, object_random_offset
+#   CPM objects                               object_const_offset, object_random_offset
 #
 # Error models of every station (include/ErrorModels.h):
 #   GNSS               VeReMi Extension error model (Kamel et al., ICC 2020)
@@ -41,7 +42,6 @@ defaults:
   fault_start_time: 0.0
   cpm_fault_profile: "none"
   cpm_fault_start_time: 0.0
-  cpm_fault_magnitude: 20.0
 
 # ── Honest traffic: false-positive floor and corroboration coverage ──────────
 honest:
@@ -73,9 +73,6 @@ speed_faults:
 
 # ── CPM content ──────────────────────────────────────────────────────────────
 cpm_faults:
-  - id: ghost
-    description: "A moving ghost vehicle 20 m ahead of the attacker"
-    cpm_fault_profile: "ghost"
   - id: object_const_offset
     cpm_fault_profile: "object_const_offset"
   - id: object_random_offset
@@ -83,12 +80,6 @@ cpm_faults:
 
 # ── Component ablations: what each object check contributes ──
 ablations:
-  - id: ghost_no_admissibility
-    cpm_fault_profile: "ghost"
-    enable_admissibility: false
-  - id: ghost_no_object_kinematics
-    cpm_fault_profile: "ghost"
-    enable_object_kinematics: false
   - id: object_const_offset_no_object_kinematics
     cpm_fault_profile: "object_const_offset"
     enable_object_kinematics: false

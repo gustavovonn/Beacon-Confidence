@@ -81,10 +81,11 @@ inline PhysicalInvarianceResult phase0_PhysicalInvariance(
     const KinematicState& pastState,
     const KinematicState& currentState,
     double speedToleranceMps = ConstantsPhysics::DEFAULT_SPEED_TOLERANCE_MPS,
-    bool enabled = true)
+    bool enabled = true,
+    double minInterFrameTime = ConstantsPhysics::MIN_INTER_FRAME_TIME)
 {
     PhysicalInvarianceResult result = checkPhysicalInvariants<CoordPolicy>(
-        pastState, currentState, speedToleranceMps);
+        pastState, currentState, speedToleranceMps, minInterFrameTime);
 
     if (!enabled) {
         result.failed = false;
