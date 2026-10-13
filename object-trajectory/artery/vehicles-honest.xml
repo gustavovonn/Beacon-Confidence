@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Every vehicle honest. The recording must contain no attack: faults are injected later at ingestion
+  time so that one recording serves every subset. Pinned here rather than reusing
+  cp-trustfulness/artery/config/vehicles.xml, which the Paper-1 batch scripts rewrite per run.
+-->
+<vehicles>
+    <vehicle type="config.neds.HonestCar" rate="1.00" />
+</vehicles>

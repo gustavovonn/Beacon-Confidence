@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Services for the honest dataset run.
+
+  SensorNoiseService is present but configured error-free in omnetpp.ini (gnssErrorModel = "none",
+  radarErrorModel = "none"): it is what populates the objectStation oracle on the SENDER side, by
+  matching each perceived object's offset against the global environment model at the moment the CPM
+  is built. Without it there is no association ground truth, and every association metric becomes
+  unmeasurable. In this configuration it records without perturbing.
+
+  CollectiveTrustService is deliberately absent. The dataset must not carry the previous direction's
+  per-message confidence; the engine under test consumes this dataset offline instead.
+-->
+<services>
+    <!-- honest CAM transmission/reception -->
+    <service type="artery.application.CaService" name="CA">
+        <listener port="2001" channel="180" aid="36"/>
+    </service>
+
+    <!-- CPMs on BTP port 2009 (vanetza::btp::ports::CPM) -->
+    <service type="artery.envmod.service.CpService" name="CP">
+        <listener port="2009"/>
+    </service>
+
+    <!-- the oracle source; adds no error in this configuration -->
+    <service type="config.neds.SensorNoiseService" name="Noise">
+    </service>
+
+    <!-- the recorder -->
+    <service type="object_trajectory.ArteryDatasetGenerator" name="DatasetGenerator">
+    </service>
+</services>

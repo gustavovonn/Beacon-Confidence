@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Local perception sensors: Artery's reference arrangement, which carries the geometry that
+  ETSI TR 103 562 V2.1.1 Table 4 records.
+
+  Four radars, a short-range and a long-range pair, mirrored front and rear:
+
+      short range:  65 m, field of view +-40 degrees   (fovAngle 80)
+      long range:  150 m, field of view  +-5 degrees   (fovAngle 10)
+
+  Those two pairs of numbers are exactly Table 4's configuration 1, and exactly what
+  artery/scenarios/artery/omnetpp.ini configures. The TR's clause 5.3.2.2 states the study used
+  Artery's own environment model, and Table 4 sits in clause 5.3.3.2, which describes the ns-3
+  port of those same sensors - which is why the table labels the pair "Forward sensors" while
+  Artery mirrors them to the rear. We follow Artery.
+
+  Not used: Table 4's configuration 2 (150 m, 360 degrees). Clause 5.3.2.2 calls it "an artificial
+  setup ... to be able to generate large CP messages in specific scenarios".
+
+  Ranges and apertures are set per sensor name in omnetpp.ini, and must stay in step with
+  Noise.sensorCoverage there.
+-->
+<sensors>
+    <sensor name="FrontShortRangeRadar" type="artery.envmod.sensor.FrontRadar" />
+    <sensor name="FrontLongRangeRadar"  type="artery.envmod.sensor.FrontRadar" />
+    <sensor name="RearShortRangeRadar"  type="artery.envmod.sensor.RearRadar" />
+    <sensor name="RearLongRangeRadar"   type="artery.envmod.sensor.RearRadar" />
+</sensors>
