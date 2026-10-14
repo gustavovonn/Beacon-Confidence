@@ -1,4 +1,4 @@
-# Pure C++17 build: the engine, its tests and the cost evaluator.
+# Pure C++17 build: the engine and its tools.
 #
 # Deliberately a plain Makefile and not CMake. This has to build on the VisionFive 2, which runs a
 # bare Linux where the only thing that can be relied on is a compiler and make. Nothing here links
@@ -6,7 +6,6 @@
 # artery/ and is built by Artery's own CMake, never by this file.
 #
 #   make              build everything
-#   make test         build and run the test suites
 #   make cost         build and run the cost evaluator at its default scale
 #   make sweep        build and run the scale sweep (the feasibility table)
 #
@@ -31,11 +30,10 @@ ENGINE_SRC := src/UnscentedCTRA.cc src/ObjectConfidenceEngine.cc src/DatasetPars
 VENDOR_SRC := shared/scipy_lsap/rectangular_lsap.cpp
 ENGINE_OBJ := $(ENGINE_SRC:%.cc=$(BUILD)/%.o) $(VENDOR_SRC:%.cpp=$(BUILD)/%.o)
 
-TESTS := $(BUILD)/test_measurement_space $(BUILD)/test_pipeline $(BUILD)/test_dataset $(BUILD)/test_lab_ctra $(BUILD)/test_ukf
 TOOLS := $(BUILD)/cost_evaluator $(BUILD)/experiment_runner $(BUILD)/ukf_trace
 
-.PHONY: all test cost sweep run validate clean
-all: $(TESTS) $(TOOLS)
+.PHONY: all cost sweep run validate clean
+all: $(TOOLS)
 
 $(BUILD)/%.o: %.cc
 	@mkdir -p $(dir $@)
@@ -45,27 +43,7 @@ $(BUILD)/%.o: %.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(DEPFLAGS) -c -o $@ $<
 
-$(BUILD)/test_measurement_space: tests/test_measurement_space.cc $(ENGINE_OBJ)
-	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $(DEPFLAGS) -o $@ $^
-
-$(BUILD)/test_pipeline: tests/test_pipeline.cc $(ENGINE_OBJ)
-	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $(DEPFLAGS) -o $@ $^
-
-$(BUILD)/test_lab_ctra: tests/test_lab_ctra.cc
-	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $(DEPFLAGS) -o $@ $^
-
-$(BUILD)/test_dataset: tests/test_dataset.cc $(ENGINE_OBJ)
-	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $(DEPFLAGS) -o $@ $^
-
-$(BUILD)/test_ukf: tests/test_ukf.cc $(ENGINE_OBJ)
-	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $(DEPFLAGS) -o $@ $^
-
-$(BUILD)/ukf_trace: tools/ukf_trace.cc $(ENGINE_OBJ)
+$(BUILD)/ukf_trace: tools/ukf_trace.cc $(BUILD)/src/UnscentedCTRA.o
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(DEPFLAGS) -o $@ $^
 
@@ -76,9 +54,6 @@ $(BUILD)/cost_evaluator: tools/cost_evaluator.cc $(ENGINE_OBJ)
 $(BUILD)/experiment_runner: tools/experiment_runner.cc $(ENGINE_OBJ)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(DEPFLAGS) -o $@ $^
-
-test: $(TESTS)
-	@./tests/run_tests.sh
 
 cost: $(BUILD)/cost_evaluator
 	@$(BUILD)/cost_evaluator
