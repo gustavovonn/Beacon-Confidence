@@ -1,7 +1,3 @@
-[submodule "artery"]
-	path = artery
-	url = https://github.com/gustavovonn/artery.git
-	branch = v2x-framework
 [submodule "sumo-scenarios/LuSTScenario"]
 	path = sumo-scenarios/LuSTScenario
 	url = https://github.com/lcodeca/LuSTScenario.git
