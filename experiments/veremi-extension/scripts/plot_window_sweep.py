@@ -411,7 +411,7 @@ def main():
     # -------------------------------------------------------------------------
     # Mode 3: Live Evaluation
     # -------------------------------------------------------------------------
-    runner_path = os.path.join(workspace_dir, "cp-trustfulness", "veremi-extension", "build", "veremi_runner")
+    runner_path = os.path.join(os.path.dirname(script_dir), "build", "veremi_runner")
     if not os.path.exists(runner_path):
         print(f"Error: {runner_path} not found. Please compile it first.")
         sys.exit(1)

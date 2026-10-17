@@ -74,7 +74,7 @@ SCORER_CONFIGS = [
 def find_parquet_dirs(scenario):
     candidates = [
         os.path.join(WORKSPACE_ROOT, "veremi-extension", "parquet", scenario, "VeReMi_*"),
-        os.path.join(WORKSPACE_ROOT, "cp-trustfulness", "veremi-extension", "parquet", scenario, "VeReMi_*"),
+        os.path.join(WORKSPACE_ROOT, "experiments", "veremi-extension", "parquet", scenario, "VeReMi_*"),
         os.path.join(PROJECT_ROOT, "parquet", scenario, "VeReMi_*"),
         os.path.join(WORKSPACE_ROOT, "parquet", scenario, "VeReMi_*"),
     ]

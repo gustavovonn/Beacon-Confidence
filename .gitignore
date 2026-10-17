@@ -71,21 +71,20 @@ vcpkg_installed/
 Testing/
 .cache/
 
-cp-trustfulness/results/*
-cp-trustfulness/.cmdenv-log
-cp-trustfulness/.qtenvrc
 *__pycache__*
 latex/
 paper/
-**/.venv/*
 references/
-veremi-extension/data/
-veremi-extension/parquet
-**/results/*
-**/.cmdenv-log
-cp-trustfulness/veremi-extension/honest_baseline_tmp/
 docs/
-cp-trustfulness/f2md/results/*
-cp-trustfulness/f2md/initramfs.cpio.gz
-cp-trustfulness/f2md/busybox/
-cp-trustfulness/f2md/veremi/
+**/.venv/*
+**/results/*
+
+# VeReMi Extension dataset pipeline artifacts
+veremi-extension/data/
+veremi-extension/parquet/
+
+# Experiment artifacts
+experiments/veremi-extension/honest_baseline_tmp/
+experiments/f2md/veremi/
+experiments/f2md/busybox/
+experiments/f2md/initramfs.cpio.gz

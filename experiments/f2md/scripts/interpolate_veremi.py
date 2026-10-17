@@ -234,7 +234,7 @@ def get_default_paths():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     f2md_dir = os.path.abspath(os.path.join(script_dir, ".."))
     
-    # Locate project root (where .git is located or 2 levels up from f2md: repo_root/cp-trustfulness/f2md)
+    # Locate project root (where .git is located or 2 levels up from f2md: repo_root/experiments/f2md)
     cur = script_dir
     repo_root = None
     while cur and cur != os.path.dirname(cur):

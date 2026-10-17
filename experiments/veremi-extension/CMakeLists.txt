@@ -1,5 +1,5 @@
-cmake_minimum_required(VERSION 4.4)
-project(cpTrustfullnessVeremiExtension)
+cmake_minimum_required(VERSION 3.16)
+project(veremi_extension_runner)
 
 add_executable(veremi_runner
     veremi_runner.cc

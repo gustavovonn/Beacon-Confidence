@@ -15,7 +15,7 @@ from datetime import datetime
 def find_parquet_dirs(workspace_dir, scenario):
     candidates = [
         os.path.join(workspace_dir, "veremi-extension", "parquet", scenario, "VeReMi_*"),
-        os.path.join(workspace_dir, "cp-trustfulness", "veremi-extension", "parquet", scenario, "VeReMi_*"),
+        os.path.join(workspace_dir, "experiments", "veremi-extension", "parquet", scenario, "VeReMi_*"),
         os.path.join(workspace_dir, "parquet", scenario, "VeReMi_*"),
     ]
     dirs = []
@@ -28,7 +28,7 @@ def find_parquet_dirs(workspace_dir, scenario):
 def find_all_scenarios(workspace_dir):
     search_dirs = [
         os.path.join(workspace_dir, "veremi-extension", "parquet"),
-        os.path.join(workspace_dir, "cp-trustfulness", "veremi-extension", "parquet"),
+        os.path.join(workspace_dir, "experiments", "veremi-extension", "parquet"),
         os.path.join(workspace_dir, "parquet"),
     ]
     scenarios = set()
@@ -213,7 +213,7 @@ def main():
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
     workspace_dir = os.path.abspath(os.path.join(script_dir, "../../.."))
-    runner_path = os.path.join(workspace_dir, "cp-trustfulness", "veremi-extension", "build", "veremi_runner")
+    runner_path = os.path.join(os.path.dirname(script_dir), "build", "veremi_runner")
     results_dir = os.path.join(os.path.dirname(script_dir), "results")
     
     if not os.path.exists(runner_path):
