@@ -131,7 +131,7 @@ done
 
 if [ ! -f "$BIN" ]; then
     echo "[!] Error: RISC-V evaluator binary not found at '$BIN'."
-    echo "    Specify via --bin <path> or compile using cmake -B build-riscv -S . -DUSE_ARROW=OFF -DSTATIC_BUILD=ON"
+    echo "    Specify via --bin <path> or compile using cmake -B build-riscv -S . -DSTATIC_BUILD=ON"
     exit 1
 fi
 

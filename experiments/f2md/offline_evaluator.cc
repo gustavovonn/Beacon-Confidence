@@ -11,11 +11,6 @@
 #include <fstream>
 #include <iomanip>
 
-#ifdef USE_ARROW
-#include <arrow/api.h>
-#include <arrow/io/api.h>
-#include <parquet/arrow/reader.h>
-#endif
 #include "BinaryMessageFormat.h"
 
 // Trustfulness (OLS-CTRA) Dependencies

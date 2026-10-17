@@ -15,12 +15,11 @@ f2md/
 ├── scripts/
 │   ├── interpolate_veremi.py      # Raw JSON -> synchronized Parquet
 │   ├── export_parquet_to_bin.py   # Parquet -> zero-dependency .bin
-│   ├── run_benchmarks_x86.sh      # x86 host runner
 │   ├── run_benchmarks_riscv.sh    # RISC-V SBC runner
 │   ├── busybox_build_riscv.sh     # Isolated static BusyBox builder
 │   └── vf2_setup.sh               # StarFive VisionFive 2 modular setup & packager
 ├── veremi/                        # Benchmark datasets
-│   ├── parquet/                   # Columnar traces (.parquet)
+│   ├── parquet/                   # Columnar traces (.parquet, ETL intermediate)
 │   └── bin/                       # Binary traces (.bin)
 ├── results/                       # CSV and Markdown reports
 └── veins/                         # Decoupled F2MD checks & applications
@@ -55,16 +54,14 @@ python3 scripts/export_parquet_to_bin.py
 
 ## 3. Build
 
-### Host Build (with Apache Arrow)
+### Host Build (Zero Dependencies)
+
+The evaluator ingests only the zero-dependency binary traces (`.bin`), so no Apache Arrow
+or Parquet C++ libraries are required. Produce the traces with the ETL step above.
+
 ```bash
 cmake -B build -S .
 cmake --build build -j$(nproc)
-```
-
-### Standalone Build (Zero Dependencies, Binary Traces Only)
-```bash
-cmake -B build-standalone -S . -DUSE_ARROW=OFF
-cmake --build build-standalone -j$(nproc)
 ```
 
 ### RISC-V SBC Cross-Compilation & Packaging
@@ -73,7 +70,7 @@ cmake --build build-standalone -j$(nproc)
 cmake -B build-riscv -S . \
     -DCMAKE_C_COMPILER=riscv64-linux-gnu-gcc \
     -DCMAKE_CXX_COMPILER=riscv64-linux-gnu-g++ \
-    -DUSE_ARROW=OFF -DSTATIC_BUILD=ON
+    -DSTATIC_BUILD=ON
 cmake --build build-riscv -j$(nproc)
 riscv64-linux-gnu-strip build-riscv/offline_evaluator -o build-riscv/offline_evaluator_stripped
 
@@ -89,14 +86,11 @@ riscv64-linux-gnu-strip build-riscv/offline_evaluator -o build-riscv/offline_eva
 ### Automated Runners (Evaluates All 8 Profiles by Default)
 
 ```bash
-# Host x86_64:
-./scripts/run_benchmarks_x86.sh --max-msgs 50000
-
 # StarFive VisionFive 2 RISC-V SBC:
 ./scripts/run_benchmarks_riscv.sh --max-msgs 50000
 
 # (Optional) Evaluate a single profile instead:
-./scripts/run_benchmarks_x86.sh --profile ConstPos_0709 --max-msgs 50000
+./scripts/run_benchmarks_riscv.sh --profile ConstPos_0709 --max-msgs 50000
 ```
 
 ### Direct CLI Execution

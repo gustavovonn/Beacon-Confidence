@@ -21,12 +21,6 @@
 // -----------------------------------------------------------------------------
 #include "BinaryMessageFormat.h"
 
-#ifdef USE_ARROW
-#include <arrow/api.h>
-#include <arrow/io/api.h>
-#include <parquet/arrow/reader.h>
-#endif
-
 #include <filesystem>
 #include <string_view>
 
@@ -37,7 +31,7 @@ struct PrevState {
 };
 
 // -----------------------------------------------------------------------------
-// Parquet & Binary Message Extractor
+// Binary Message Extractor
 // -----------------------------------------------------------------------------
 class ParquetMessageExtractor {
 public:
@@ -56,93 +50,9 @@ public:
                 }
             }
         }
-#ifdef USE_ARROW
-        std::vector<std::string> parquet_files;
-        if (std::filesystem::is_directory(path)) {
-            for (const auto& entry : std::filesystem::directory_iterator(path)) {
-                if (entry.path().extension() == ".parquet") {
-                    parquet_files.push_back(entry.path().string());
-                }
-            }
-        } else if (std::filesystem::exists(path)) {
-            parquet_files.push_back(path);
-        }
-        std::sort(parquet_files.begin(), parquet_files.end());
-
-        std::vector<RawMessage> all_messages;
-        
-        for (const auto& fpath : parquet_files) {
-            auto infile_result = arrow::io::ReadableFile::Open(fpath);
-            if (!infile_result.ok()) continue;
-            auto infile = infile_result.ValueOrDie();
-            
-            auto reader_result = parquet::arrow::OpenFile(infile, arrow::default_memory_pool());
-            if (!reader_result.ok()) continue;
-            auto reader = std::move(reader_result.ValueOrDie());
-            
-            auto table_result = reader->ReadTable();
-            if (!table_result.ok()) continue;
-            auto table = table_result.ValueOrDie();
-            
-            auto type_col = table->GetColumnByName("type");
-            auto rcvTime_col = table->GetColumnByName("rcvTime");
-            auto sender_col = table->GetColumnByName("sender");
-            auto pos_x_col = table->GetColumnByName("pos_x");
-            auto pos_y_col = table->GetColumnByName("pos_y");
-            auto spd_x_col = table->GetColumnByName("spd_x");
-            auto spd_y_col = table->GetColumnByName("spd_y");
-            auto hed_x_col = table->GetColumnByName("hed_x");
-            auto hed_y_col = table->GetColumnByName("hed_y");
-            
-            if (!type_col || !rcvTime_col || !sender_col || !pos_x_col || !pos_y_col || !spd_x_col || !spd_y_col || !hed_x_col || !hed_y_col) {
-                continue;
-            }
-            
-            for (int chunk_idx = 0; chunk_idx < type_col->num_chunks(); ++chunk_idx) {
-                auto type_arr = std::static_pointer_cast<arrow::Int64Array>(type_col->chunk(chunk_idx));
-                auto time_arr = std::static_pointer_cast<arrow::DoubleArray>(rcvTime_col->chunk(chunk_idx));
-                auto sender_arr = std::static_pointer_cast<arrow::Int64Array>(sender_col->chunk(chunk_idx));
-                auto px_arr = std::static_pointer_cast<arrow::DoubleArray>(pos_x_col->chunk(chunk_idx));
-                auto py_arr = std::static_pointer_cast<arrow::DoubleArray>(pos_y_col->chunk(chunk_idx));
-                auto sx_arr = std::static_pointer_cast<arrow::DoubleArray>(spd_x_col->chunk(chunk_idx));
-                auto sy_arr = std::static_pointer_cast<arrow::DoubleArray>(spd_y_col->chunk(chunk_idx));
-                auto hx_arr = std::static_pointer_cast<arrow::DoubleArray>(hed_x_col->chunk(chunk_idx));
-                auto hy_arr = std::static_pointer_cast<arrow::DoubleArray>(hed_y_col->chunk(chunk_idx));
-                
-                for (int64_t i = 0; i < type_arr->length(); ++i) {
-                    if (!type_arr->IsNull(i) && type_arr->Value(i) == 3) {
-                        RawMessage msg;
-                        msg.rcvTime = time_arr->Value(i);
-                        msg.sender = sender_arr->Value(i);
-                        msg.pos_x = px_arr->Value(i);
-                        msg.pos_y = py_arr->Value(i);
-                        
-                        double sx = sx_arr->Value(i);
-                        double sy = sy_arr->Value(i);
-                        msg.speed = std::sqrt(sx*sx + sy*sy);
-                        
-                        double hx = hx_arr->Value(i);
-                        double hy = hy_arr->Value(i);
-                        double h_deg = std::atan2(hx, hy) * 180.0 / M_PI;
-                        if (h_deg < 0) h_deg += 360.0;
-                        msg.heading = h_deg;
-                        msg.accel = 0.0;
-                        msg.yawRate = 0.0;
-                        
-                        all_messages.push_back(msg);
-                    }
-                }
-            }
-        }
-        
-        std::sort(all_messages.begin(), all_messages.end());
-        computeDerivedKinematics(all_messages);
-        
-        return all_messages;
-#else
-        std::cerr << "[!] Error: Built without Apache Arrow support. Please provide a .bin dataset.\n";
+        std::cerr << "[!] Error: Unsupported dataset format. Please provide a .bin trace "
+                     "(convert with scripts/export_parquet_to_bin.py).\n";
         return {};
-#endif
     }
 
 private:

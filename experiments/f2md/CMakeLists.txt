@@ -5,14 +5,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
 
-option(USE_ARROW "Enable Apache Arrow / Parquet ingestion" ON)
 option(STATIC_BUILD "Enable static binary linking" OFF)
-
-if(USE_ARROW)
-    find_package(Arrow REQUIRED)
-    find_package(Parquet REQUIRED)
-    add_compile_definitions(USE_ARROW)
-endif()
 
 if(STATIC_BUILD)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static")
@@ -58,6 +51,3 @@ add_executable(offline_evaluator
     veins/modules/application/f2md/mdReport/ProtocolEnforcer.cc
 )
 
-if(USE_ARROW)
-    target_link_libraries(offline_evaluator PRIVATE arrow_shared parquet_shared)
-endif()

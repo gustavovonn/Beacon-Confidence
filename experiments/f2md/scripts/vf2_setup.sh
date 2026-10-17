@@ -156,7 +156,6 @@ build_project_code() {
         -DCMAKE_SYSTEM_PROCESSOR=riscv64 \
         -DCMAKE_C_COMPILER="${CROSS_COMPILE}gcc" \
         -DCMAKE_CXX_COMPILER="${CROSS_COMPILE}g++" \
-        -DUSE_ARROW=OFF \
         -DSTATIC_BUILD=ON >/dev/null
 
     cmake --build "$BUILD_RISCV_DIR" -j"$(nproc)"

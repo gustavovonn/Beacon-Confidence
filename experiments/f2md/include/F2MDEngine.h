@@ -10,13 +10,6 @@
 
 #include "BinaryMessageFormat.h"
 
-// Apache Arrow & Parquet
-#ifdef USE_ARROW
-#include <arrow/api.h>
-#include <arrow/io/api.h>
-#include <parquet/arrow/reader.h>
-#endif
-
 // F2MD Dependencies
 #include "F2MDParameters.h"
 #include "mdChecks/LegacyChecks.h"
@@ -37,7 +30,7 @@ inline double global_sim_time = 0.0;
 
 
 // -----------------------------------------------------------------------------
-// Parquet Message Extractor (Adapted for BSM mapping)
+// Binary Message Extractor (Adapted for BSM mapping)
 // -----------------------------------------------------------------------------
 class F2MDParquetExtractor {
 public:
@@ -52,151 +45,9 @@ public:
                 }
             }
         }
-#ifdef USE_ARROW
-        std::vector<std::string> parquet_files;
-        if (std::filesystem::is_directory(path)) {
-            for (const auto& entry : std::filesystem::directory_iterator(path)) {
-                if (entry.path().extension() == ".parquet") {
-                    parquet_files.push_back(entry.path().string());
-                }
-            }
-        } else if (std::filesystem::exists(path)) {
-            parquet_files.push_back(path);
-        }
-        std::sort(parquet_files.begin(), parquet_files.end());
-
-        std::vector<BasicSafetyMessage> all_messages;
-
-        for (const auto& fpath : parquet_files) {
-            auto infile_result = arrow::io::ReadableFile::Open(fpath);
-            if (!infile_result.ok()) continue;
-            auto infile = infile_result.ValueOrDie();
-            
-            auto reader_result = parquet::arrow::OpenFile(infile, arrow::default_memory_pool());
-            if (!reader_result.ok()) continue;
-            auto reader = std::move(reader_result.ValueOrDie());
-            
-            auto table_result = reader->ReadTable();
-            if (!table_result.ok()) continue;
-            auto table = table_result.ValueOrDie();
-            
-            auto type_col = table->GetColumnByName("type");
-            auto rcvTime_col = table->GetColumnByName("rcvTime");
-            auto receiver_id_col = table->GetColumnByName("receiver_id");
-            auto sender_col = table->GetColumnByName("sender");
-            auto pos_x_col = table->GetColumnByName("pos_x");
-            auto pos_y_col = table->GetColumnByName("pos_y");
-            auto pos_nx_col = table->GetColumnByName("pos_noise_x");
-            auto pos_ny_col = table->GetColumnByName("pos_noise_y");
-            auto spd_x_col = table->GetColumnByName("spd_x");
-            auto spd_y_col = table->GetColumnByName("spd_y");
-            auto spd_nx_col = table->GetColumnByName("spd_noise_x");
-            auto spd_ny_col = table->GetColumnByName("spd_noise_y");
-            auto acl_x_col = table->GetColumnByName("acl_x");
-            auto acl_y_col = table->GetColumnByName("acl_y");
-            auto acl_nx_col = table->GetColumnByName("acl_noise_x");
-            auto acl_ny_col = table->GetColumnByName("acl_noise_y");
-            auto hed_x_col = table->GetColumnByName("hed_x");
-            auto hed_y_col = table->GetColumnByName("hed_y");
-            auto hed_nx_col = table->GetColumnByName("hed_noise_x");
-            auto hed_ny_col = table->GetColumnByName("hed_noise_y");
-            
-            auto epos_x_col = table->GetColumnByName("ego_pos_x");
-            auto epos_y_col = table->GetColumnByName("ego_pos_y");
-            auto ehed_x_col = table->GetColumnByName("ego_hed_x");
-            auto ehed_y_col = table->GetColumnByName("ego_hed_y");
-            auto espd_x_col = table->GetColumnByName("ego_spd_x");
-            auto espd_y_col = table->GetColumnByName("ego_spd_y");
-            auto recvp_col  = table->GetColumnByName("receiver_pseudo");
-            
-            if (!type_col || !rcvTime_col || !sender_col || !pos_x_col || !epos_x_col) continue;
-            
-            for (int chunk_idx = 0; chunk_idx < type_col->num_chunks(); ++chunk_idx) {
-                auto type_arr = std::static_pointer_cast<arrow::Int64Array>(type_col->chunk(chunk_idx));
-                auto time_arr = std::static_pointer_cast<arrow::DoubleArray>(rcvTime_col->chunk(chunk_idx));
-                auto recvid_arr = std::static_pointer_cast<arrow::Int64Array>(receiver_id_col->chunk(chunk_idx));
-                auto sender_arr = std::static_pointer_cast<arrow::Int64Array>(sender_col->chunk(chunk_idx));
-                
-                auto px_arr = std::static_pointer_cast<arrow::DoubleArray>(pos_x_col->chunk(chunk_idx));
-                auto py_arr = std::static_pointer_cast<arrow::DoubleArray>(pos_y_col->chunk(chunk_idx));
-                auto pnx_arr = std::static_pointer_cast<arrow::DoubleArray>(pos_nx_col->chunk(chunk_idx));
-                auto pny_arr = std::static_pointer_cast<arrow::DoubleArray>(pos_ny_col->chunk(chunk_idx));
-                
-                auto sx_arr = std::static_pointer_cast<arrow::DoubleArray>(spd_x_col->chunk(chunk_idx));
-                auto sy_arr = std::static_pointer_cast<arrow::DoubleArray>(spd_y_col->chunk(chunk_idx));
-                auto snx_arr = std::static_pointer_cast<arrow::DoubleArray>(spd_nx_col->chunk(chunk_idx));
-                auto sny_arr = std::static_pointer_cast<arrow::DoubleArray>(spd_ny_col->chunk(chunk_idx));
-                
-                auto ax_arr = std::static_pointer_cast<arrow::DoubleArray>(acl_x_col->chunk(chunk_idx));
-                auto ay_arr = std::static_pointer_cast<arrow::DoubleArray>(acl_y_col->chunk(chunk_idx));
-                auto anx_arr = std::static_pointer_cast<arrow::DoubleArray>(acl_nx_col->chunk(chunk_idx));
-                auto any_arr = std::static_pointer_cast<arrow::DoubleArray>(acl_ny_col->chunk(chunk_idx));
-                
-                auto hx_arr = std::static_pointer_cast<arrow::DoubleArray>(hed_x_col->chunk(chunk_idx));
-                auto hy_arr = std::static_pointer_cast<arrow::DoubleArray>(hed_y_col->chunk(chunk_idx));
-                auto hnx_arr = std::static_pointer_cast<arrow::DoubleArray>(hed_nx_col->chunk(chunk_idx));
-                auto hny_arr = std::static_pointer_cast<arrow::DoubleArray>(hed_ny_col->chunk(chunk_idx));
-                
-                auto epx_arr = std::static_pointer_cast<arrow::DoubleArray>(epos_x_col->chunk(chunk_idx));
-                auto epy_arr = std::static_pointer_cast<arrow::DoubleArray>(epos_y_col->chunk(chunk_idx));
-                auto ehx_arr = std::static_pointer_cast<arrow::DoubleArray>(ehed_x_col->chunk(chunk_idx));
-                auto ehy_arr = std::static_pointer_cast<arrow::DoubleArray>(ehed_y_col->chunk(chunk_idx));
-                
-                std::shared_ptr<arrow::DoubleArray> esx_arr = (espd_x_col && chunk_idx < espd_x_col->num_chunks()) ? std::static_pointer_cast<arrow::DoubleArray>(espd_x_col->chunk(chunk_idx)) : nullptr;
-                std::shared_ptr<arrow::DoubleArray> esy_arr = (espd_y_col && chunk_idx < espd_y_col->num_chunks()) ? std::static_pointer_cast<arrow::DoubleArray>(espd_y_col->chunk(chunk_idx)) : nullptr;
-                std::shared_ptr<arrow::Int64Array> recvp_arr = (recvp_col && chunk_idx < recvp_col->num_chunks()) ? std::static_pointer_cast<arrow::Int64Array>(recvp_col->chunk(chunk_idx)) : nullptr;
-                
-                for (int64_t i = 0; i < type_arr->length(); ++i) {
-                    if (!type_arr->IsNull(i) && type_arr->Value(i) == 3) {
-                        BasicSafetyMessage msg;
-                        msg.arrivalTime = time_arr->Value(i);
-                        msg.pseudonym = sender_arr->Value(i);
-                        msg.receiver_id = recvid_arr->Value(i);
-                        
-                        msg.pos = veins::Coord(px_arr->Value(i), py_arr->Value(i), 0);
-                        msg.posConf = veins::Coord(pnx_arr->Value(i), pny_arr->Value(i), 0);
-                        
-                        msg.speed = veins::Coord(sx_arr->Value(i), sy_arr->Value(i), 0);
-                        msg.speedConf = veins::Coord(snx_arr->Value(i), sny_arr->Value(i), 0);
-                        
-                        msg.accel = veins::Coord(ax_arr->Value(i), ay_arr->Value(i), 0);
-                        msg.accelConf = veins::Coord(anx_arr->Value(i), any_arr->Value(i), 0);
-                        
-                        msg.heading = veins::Coord(hx_arr->Value(i), hy_arr->Value(i), 0); 
-                        msg.headingConf = veins::Coord(hnx_arr->Value(i), hny_arr->Value(i), 0);
-                        
-                        msg.recv_pos = veins::Coord(epx_arr->Value(i), epy_arr->Value(i), 0);
-                        msg.recv_heading = veins::Coord(ehx_arr->Value(i), ehy_arr->Value(i), 0);
-                        
-                        if (esx_arr && esy_arr && !esx_arr->IsNull(i) && !esy_arr->IsNull(i)) {
-                            msg.recv_speed = veins::Coord(esx_arr->Value(i), esy_arr->Value(i), 0);
-                        } else {
-                            msg.recv_speed = veins::Coord(0, 0, 0);
-                        }
-                        
-                        if (recvp_arr && !recvp_arr->IsNull(i)) {
-                            msg.receiver_pseudo = recvp_arr->Value(i);
-                        } else {
-                            msg.receiver_pseudo = msg.receiver_id;
-                        }
-                        
-                        all_messages.push_back(msg);
-                    }
-                }
-            }
-        }
-        
-        // Sort chronologically
-        std::sort(all_messages.begin(), all_messages.end(), 
-            [](const BasicSafetyMessage& a, const BasicSafetyMessage& b) {
-                return a.arrivalTime < b.arrivalTime;
-            });
-            
-        return all_messages;
-#else
-        std::cerr << "[!] Error: Built without Apache Arrow support. Please provide a .bin dataset.\n";
+        std::cerr << "[!] Error: Unsupported dataset format. Please provide a .bin trace "
+                     "(convert with scripts/export_parquet_to_bin.py).\n";
         return {};
-#endif
     }
 };
 
