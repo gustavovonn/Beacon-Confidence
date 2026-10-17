@@ -232,9 +232,9 @@ def process_profile(profile_name, source_data_dir, output_dir, max_msgs, num_wor
 def get_default_paths():
     """Dynamically determine repository and data directories from script location."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    f2md_dir = os.path.abspath(os.path.join(script_dir, ".."))
-    
-    # Locate project root (where .git is located or 2 levels up from f2md: repo_root/experiments/f2md)
+    eval_dir = os.path.abspath(os.path.join(script_dir, ".."))
+
+    # Locate project root (where .git lives, else one level up from computational-eval)
     cur = script_dir
     repo_root = None
     while cur and cur != os.path.dirname(cur):
@@ -243,10 +243,10 @@ def get_default_paths():
             break
         cur = os.path.dirname(cur)
     if not repo_root:
-        repo_root = os.path.abspath(os.path.join(f2md_dir, "..", ".."))
+        repo_root = os.path.abspath(os.path.join(eval_dir, ".."))
 
     default_source = os.path.join(repo_root, "veremi-extension", "data")
-    default_output = os.path.join(f2md_dir, "veremi", "parquet")
+    default_output = os.path.join(eval_dir, "veremi", "parquet")
     return default_source, default_output
 
 DEFAULT_SOURCE_DIR, DEFAULT_OUTPUT_DIR = get_default_paths()

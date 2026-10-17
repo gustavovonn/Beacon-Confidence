@@ -7,7 +7,7 @@ High-throughput native C++ Parquet evaluation runner and Python analysis suite f
 ## 1. Directory Structure
 
 ```
-experiments/veremi-extension/
+detection-eval/
 ├── CMakeLists.txt                       # CMake build definition (links Arrow & Parquet)
 ├── veremi_runner.cc                     # Native C++ streaming Parquet processor
 ├── requirements.txt                     # Python evaluation dependencies
@@ -52,7 +52,7 @@ experiments/veremi-extension/
 ### Python Environment Setup
 Create this module's virtual environment and install its dependencies:
 ```bash
-cd experiments/veremi-extension
+cd detection-eval
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -90,7 +90,7 @@ The runner automatically resolves Parquet datalakes converted by `veremi-extensi
 
 Default search locations:
 1. `<repo_root>/veremi-extension/parquet/<ScenarioName>/VeReMi_*`
-2. `<repo_root>/experiments/veremi-extension/parquet/<ScenarioName>/VeReMi_*`
+2. `<repo_root>/detection-eval/parquet/<ScenarioName>/VeReMi_*`
 3. `<repo_root>/parquet/<ScenarioName>/VeReMi_*`
 
 Supported scenarios include both rush hour (`0709`) and non-rush hour (`1416`) traces:

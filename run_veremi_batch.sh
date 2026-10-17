@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
-EXP_DIR="$SCRIPT_DIR/experiments/veremi-extension"
+EXP_DIR="$SCRIPT_DIR/detection-eval"
 BUILD_DIR="$EXP_DIR/build"
 RUNNER="$BUILD_DIR/veremi_runner"
 

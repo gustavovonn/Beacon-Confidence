@@ -1,15 +1,15 @@
 cmake_minimum_required(VERSION 3.16)
-project(veremi_extension_runner)
+project(detection_eval)
 
 # Shared V2X motion primitives (header-only)
-set(V2X_MISC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../v2x-misc)
+set(V2X_MISC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../libs/v2x-misc)
 
 # This paper's confidence mechanism, shared by both experiments
 set(MECHANISM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/..)
 file(GLOB MECHANISM_SOURCES "${MECHANISM_DIR}/src/*.cc")
 
 add_executable(veremi_runner
-    veremi_runner.cc
+    runner.cc
     ${MECHANISM_SOURCES}
 )
 
