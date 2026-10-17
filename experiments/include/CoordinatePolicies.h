@@ -80,25 +80,6 @@ struct CartesianCoordinatePolicy {
     }
 
     /**
-     * @brief Centroid deviation in meters from a window of kinematic states.
-     * pos1 = lat (Y), pos2 = lon (X).
-     */
-    static double centroidDeviation(const std::deque<KinematicState>& history,
-                                    double receivedPos1, double receivedPos2)
-    {
-        if (history.empty()) return 0.0;
-        double sumX = 0.0;
-        double sumY = 0.0;
-        for (const auto& s : history) {
-            sumX += s.lon;
-            sumY += s.lat;
-        }
-        const double cX = sumX / static_cast<double>(history.size());
-        const double cY = sumY / static_cast<double>(history.size());
-        return std::hypot(receivedPos2 - cX, receivedPos1 - cY);
-    }
-
-    /**
      * @brief Inter-frame spatial displacement in meters.
      */
     static double displacement(double pos1_a, double pos2_a,
@@ -211,24 +192,6 @@ struct Wgs84CoordinatePolicy {
         const double dy = R_phi * (latRad2 - latRad1);
         const double dx = R_lambda * (lonRad2 - lonRad1) * std::cos(latMid);
         return std::sqrt(dx * dx + dy * dy);
-    }
-
-    /**
-     * @brief Centroid deviation in meters on WGS-84 ellipsoid from a window of kinematic states.
-     */
-    static double centroidDeviation(const std::deque<KinematicState>& history,
-                                    double receivedLat, double receivedLon)
-    {
-        if (history.empty()) return 0.0;
-        double sumLat = 0.0;
-        double sumLon = 0.0;
-        for (const auto& s : history) {
-            sumLat += s.lat;
-            sumLon += s.lon;
-        }
-        const double cLat = sumLat / static_cast<double>(history.size());
-        const double cLon = sumLon / static_cast<double>(history.size());
-        return distance(cLat, cLon, receivedLat, receivedLon);
     }
 
     /**

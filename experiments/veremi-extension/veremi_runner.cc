@@ -348,8 +348,6 @@ int main(int argc, char* argv[]) {
             ablation.enablePhase0 = false;
         } else if (arg == "--no-dyn-thresh") {
             ablation.enableDynThresh = false;
-        } else if (arg == "--no-phase2") {
-            ablation.enablePhase2 = false;
         } else if (arg == "--no-ols") {
             ablation.enableOLS = false;
         } else if (arg == "--no-dr") {
@@ -365,7 +363,7 @@ int main(int argc, char* argv[]) {
     
     if (dirPath.empty()) {
         std::cerr << "Usage: " << argv[0] << " --dir <path> [--dr <model>] [--trust <model>] [--historySize <size>] [--profile] [--min-scores]\n";
-        std::cerr << "Ablation flags: [--no-phase0] [--no-dyn-thresh] [--no-phase2] [--no-ols] [--no-dr]\n";
+        std::cerr << "Ablation flags: [--no-phase0] [--no-dyn-thresh] [--no-ols] [--no-dr]\n";
         return 1;
     }
 

@@ -135,7 +135,6 @@ namespace ConstantsPhysics {
     constexpr double DEFAULT_PENALTY_SEVERE_BASE = 5.0;   // Severe violation base (guarantees 2-frame eviction)
     constexpr double DEFAULT_PENALTY_SEVERE_SCALE = 5.0;  // Severe violation multiplier
     constexpr double DEFAULT_MAX_BETA_PENALTY = 15.0;     // Single-frame penalty ceiling
-    constexpr double DEFAULT_CENTROID_SPEED_FACTOR = 0.75;// Geometric expansion factor
 }
 
 #endif

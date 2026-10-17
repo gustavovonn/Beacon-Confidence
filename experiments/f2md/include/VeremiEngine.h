@@ -311,7 +311,7 @@ public:
         double dt = currentState.time - pastState.time;
         if (dt <= 0.0) dt = 0.1;
 
-        // Stage 1: Phase 0, Phase 1, Phase 2 Checkers Pipeline
+        // Stage 1: Phase 0, Phase 1 Checkers Pipeline
         auto t0 = std::chrono::high_resolution_clock::now();
         PhysicalInvarianceResult physicsResult = phase0_PhysicalInvariance<CartesianCoordinatePolicy>(
             pastState, currentState, params.speedToleranceMps);

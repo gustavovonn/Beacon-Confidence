@@ -225,9 +225,6 @@ python scripts/run_checker_ablation.py
 python scripts/run_checker_ablation.py --scenarios ConstPosOffset_0709 --history-size 4
 ```
 
-*Phase 2 (centroid plausibility) is disabled across all configurations (`--no-phase2`): its
-measured delta was 0.0000% across all 8 VeReMi scenarios.*
-
 ---
 
 ### G. Direct C++ Execution (`veremi_runner`)

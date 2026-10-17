@@ -9,9 +9,6 @@ Evaluates where each component succeeds, fails, or is absent:
 3. w/o Dynamic Thresh (P0: Yes, DYN: No, DR: Yes, OLS: Yes) [--no-dyn-thresh]
 4. w/o Dead-Reckoning (P0: Yes, DYN: Yes, DR: No, OLS: No) [--no-dr]
 5. w/o OLS Smoothing (Bare CTRA) (P0: Yes, DYN: Yes, DR: Yes, OLS: No) [--no-ols]
-
-Note: Phase 2 (Centroid Plausibility) is disabled across all configurations (--no-phase2)
-due to empirically verified 0.0000% delta across all 8 VeReMi scenarios.
 """
 
 import os
@@ -132,8 +129,7 @@ def evaluate_simulation(sim_dir, flags, history_size=4, threshold=0.5):
         RUNNER_BIN,
         "--dir", sim_dir,
         "--historySize", str(history_size),
-        "--min-scores",
-        "--no-phase2"
+        "--min-scores"
     ] + flags
 
     proc = subprocess.run(cmd, capture_output=True, text=True)
