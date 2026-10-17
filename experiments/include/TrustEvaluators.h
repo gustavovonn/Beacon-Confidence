@@ -6,9 +6,6 @@
 #include <deque>
 #include <map>
 
-namespace artery
-{
-
 class BetaReputationTrustEvaluator : public ITrustEvaluator
 {
 public:
@@ -50,7 +47,5 @@ public:
     static std::unique_ptr<ITrustEvaluator> create(const std::string& name,
                                                    size_t windowSize = 10);
 };
-
-} // namespace artery
 
 #endif // TRUST_EVALUATORS_H_

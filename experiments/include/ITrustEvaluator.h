@@ -7,9 +7,6 @@
 #include <string>
 #include <deque>
 
-namespace artery
-{
-
 struct TrustEvaluationParams {
     // Context-Aware Dynamic Threshold parameters
     double maxPosDev = 0.0;       // meters (acts as baseline intercept)
@@ -55,7 +52,5 @@ public:
     virtual std::string getName() const = 0;
     virtual void reset() {}
 };
-
-} // namespace artery
 
 #endif // I_TRUST_EVALUATOR_H_

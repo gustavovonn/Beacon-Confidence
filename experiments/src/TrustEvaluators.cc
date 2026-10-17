@@ -4,9 +4,6 @@
 #include <algorithm>
 #include <stdexcept>
 
-namespace artery
-{
-
 // -----------------------------------------------------------------------------
 // Beta Reputation System Evaluator
 // -----------------------------------------------------------------------------
@@ -124,5 +121,3 @@ std::unique_ptr<ITrustEvaluator> TrustEvaluatorFactory::create(const std::string
     }
     return std::make_unique<BetaReputationTrustEvaluator>();
 }
-
-} // namespace artery

@@ -7,8 +7,6 @@
 #include <deque>
 #include <cmath>
 
-namespace artery {
-
 /**
  * @brief Ablation configuration flags to systematically disable individual
  * pipeline phases and features.
@@ -157,7 +155,5 @@ inline bool phase2_CentroidPlausibility(
     return computeCentroidCheck(
         history, currentState, outCentroidDeviation, dynamicMaxPosDev, centroidSpeedFactor);
 }
-
-} // namespace artery
 
 #endif // CHECKER_PIPELINE_H_

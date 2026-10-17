@@ -4,9 +4,6 @@
 #include <string>
 #include <deque>
 
-namespace artery
-{
-
 struct PredictedState {
     double lat = 0.0;      
     double lon = 0.0;     
@@ -42,7 +39,5 @@ public:
 
     virtual std::string getName() const = 0;
 };
-
-} // namespace artery
 
 #endif // I_DEAD_RECKONING_MODEL_H_

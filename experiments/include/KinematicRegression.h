@@ -6,7 +6,6 @@
 #include <deque>
 #include <cmath>
 
-namespace artery {
 namespace KinematicRegression {
 
 /**
@@ -87,6 +86,5 @@ inline void fitOLS(const std::deque<KinematicState>& history,
 }
 
 } // namespace KinematicRegression
-} // namespace artery
 
 #endif // KINEMATIC_REGRESSION_H_

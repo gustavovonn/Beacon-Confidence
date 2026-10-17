@@ -7,8 +7,6 @@
 #include <cmath>
 #include <algorithm>
 
-namespace artery {
-
 struct PhysicalInvarianceResult {
     bool failed = false;
     double excessRatio = 0.0;
@@ -69,7 +67,5 @@ inline PhysicalInvarianceResult checkPhysicalInvariants(
 
     return res;
 }
-
-} // namespace artery
 
 #endif // PHYSICAL_INVARIANCE_H_

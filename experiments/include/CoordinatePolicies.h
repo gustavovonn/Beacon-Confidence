@@ -7,8 +7,6 @@
 #include <cmath>
 #include <algorithm>
 
-namespace artery {
-
 // -----------------------------------------------------------------------------
 // Cartesian Coordinate Policy (Euclidean 2D metric space, e.g. SUMO / VeReMi)
 // -----------------------------------------------------------------------------
@@ -242,7 +240,5 @@ struct Wgs84CoordinatePolicy {
         return distance(lat1, lon1, lat2, lon2);
     }
 };
-
-} // namespace artery
 
 #endif // COORDINATE_POLICIES_H_

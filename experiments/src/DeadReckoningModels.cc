@@ -1,8 +1,5 @@
 #include "../include/DeadReckoningModels.h"
 
-namespace artery
-{
-
 std::unique_ptr<IDeadReckoningModel> DeadReckoningModelFactory::create(
     const std::string& name,
     const std::string& coordSystem)
@@ -21,5 +18,3 @@ std::unique_ptr<IDeadReckoningModel> DeadReckoningModelFactory::create(
     }
     return std::make_unique<GeographicCtraModel>();
 }
-
-} // namespace artery

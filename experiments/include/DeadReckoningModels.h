@@ -8,9 +8,6 @@
 #include <string>
 #include <deque>
 
-namespace artery
-{
-
 template <typename CoordPolicy>
 class CtraDeadReckoningModel : public IDeadReckoningModel
 {
@@ -74,7 +71,5 @@ public:
         const std::string& name,
         const std::string& coordSystem = "wgs84");
 };
-
-} // namespace artery
 
 #endif // DEAD_RECKONING_MODELS_H_
