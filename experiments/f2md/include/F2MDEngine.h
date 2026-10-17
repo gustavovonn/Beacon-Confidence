@@ -8,7 +8,8 @@
 #include <chrono>
 #include <filesystem>
 
-#include "BinaryMessageFormat.h"
+#include "BinaryTraceReader.h"
+#include "BsmAdapter.h"
 
 // F2MD Dependencies
 #include "F2MDParameters.h"
@@ -30,26 +31,20 @@ inline double global_sim_time = 0.0;
 
 
 // -----------------------------------------------------------------------------
-// Binary Message Extractor (Adapted for BSM mapping)
+// Trace loading for the F2MD baseline checkers
+//
+// Parsing lives in BinaryTraceReader and the mapping onto BasicSafetyMessage in
+// BsmAdapter
 // -----------------------------------------------------------------------------
-class F2MDParquetExtractor {
-public:
-    static std::vector<BasicSafetyMessage> extractMessages(const std::string& path) {
-        if (BinaryMessageExtractor::isBinaryFile(path) || path.ends_with(".bin") || path.ends_with(".dat")) {
-            return BinaryMessageExtractor::extractF2mdMessages(path);
-        }
-        if (std::filesystem::is_directory(path)) {
-            for (const auto& entry : std::filesystem::directory_iterator(path)) {
-                if (entry.path().extension() == ".bin" || entry.path().extension() == ".dat") {
-                    return BinaryMessageExtractor::extractF2mdMessages(path);
-                }
-            }
-        }
+inline std::vector<BasicSafetyMessage> loadBasicSafetyMessages(const std::string& path)
+{
+    if (!BinaryTraceReader::accepts(path)) {
         std::cerr << "[!] Error: Unsupported dataset format. Please provide a .bin trace "
                      "(convert with scripts/export_parquet_to_bin.py).\n";
         return {};
     }
-};
+    return BsmAdapter::toBasicSafetyMessages(BinaryTraceReader::read(path));
+}
 
 // -----------------------------------------------------------------------------
 class F2MDEvaluationEngine {

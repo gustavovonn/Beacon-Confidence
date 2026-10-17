@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Convert VeReMi Benchmark Parquet traces to zero-dependency compact binary (.bin) format.
-Matches SerializedBsmRecord layout defined in include/BinaryMessageFormat.h.
+Matches BinaryTraceReader::SerializedRecord layout defined in
+v2x-misc/include/BinaryTraceReader.h.
 """
 
 import os

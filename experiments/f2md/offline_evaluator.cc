@@ -11,12 +11,15 @@
 #include <fstream>
 #include <iomanip>
 
-#include "BinaryMessageFormat.h"
-
-// Trustfulness (OLS-CTRA) Dependencies
-#include "IDeadReckoningModel.h"
-#include "TrustEvaluators.h"
-#include "VeremiEngine.h"
+#include "MotionModels.h"
+#include "CoordinatePolicies.h"
+#include "Checks.h"
+#include "ConfidenceEvaluators.h"
+#include "BeaconConfidenceEngine.h"
+#include "ReceivedVector.h"
+#include "BinaryTraceReader.h"
+#include "BsmAdapter.h"
+#include "MotionVectorAdapter.h"
 
 // F2MD Dependencies
 #include "mdBase/BsmCheck.h"
@@ -26,6 +29,104 @@
 #include "mdSupport/networkLinksLib/LinkControl.h"
 #include "BasicSafetyMessage.h"
 #include "F2MDEngine.h"
+
+// -----------------------------------------------------------------------------
+// Trace loading for the OLS-CTRA pipeline
+// -----------------------------------------------------------------------------
+static std::vector<ReceivedVector> loadMotionVectors(const std::string& path)
+{
+    if (!BinaryTraceReader::accepts(path)) {
+        std::cerr << "[!] Error: Unsupported dataset format. Please provide a .bin trace "
+                     "(convert with scripts/export_parquet_to_bin.py).\n";
+        return {};
+    }
+    auto records = BinaryTraceReader::read(path);
+    auto vectors = BsmAdapter::toMotionVectors(records);
+    MotionVectorAdapter::applyFiniteDifference(vectors, ConstantsPhysics::MIN_INTER_FRAME_TIME);
+    return vectors;
+}
+
+// -----------------------------------------------------------------------------
+// Stage-isolation probes for the tiered benchmark (paper Table II)
+//
+// Tier 3 is just BeaconConfidenceEngine::onMotionVector with a StageTiming sink.
+// -----------------------------------------------------------------------------
+
+using OlsCtraEngine = BeaconConfidenceEngine<CartesianCoordinatePolicy>;
+
+// Tier 1: predictor and hard checks alone, no posterior update.
+static bool probeStage1(OlsCtraEngine& engine, const ReceivedVector& rv,
+                        double* stage1_us = nullptr)
+{
+    Predictor& pred = engine.predictor();
+    const EngineConfig& cfg = engine.config();
+
+    if (!pred.isTracked(rv.sender)) {
+        pred.cacheRegister(rv.sender, rv.mv);
+        engine.scorer().setConfidence(rv.sender, 1.0);
+        if (stage1_us) *stage1_us = 0.0;
+        return false;
+    }
+
+    const auto& history = pred.history(rv.sender);
+    const KinematicState pastState = history.back();
+    double dt = rv.mv.time - pastState.time;
+    if (dt < ConstantsPhysics::MIN_INTER_FRAME_TIME) dt = ConstantsPhysics::MIN_INTER_FRAME_TIME;
+
+    const auto t0 = std::chrono::high_resolution_clock::now();
+    PhysicalInvarianceResult physicsResult = consistencyCheck<CartesianCoordinatePolicy>(
+        pastState, rv.mv, cfg.speedToleranceMps);
+    double distError = 0.0, dynamicMaxPosDev = 0.0;
+    predictiveCheck(
+        pred.model(), history, pastState, rv.mv, dt, cfg, physicsResult,
+        distError, dynamicMaxPosDev);
+    const auto t1 = std::chrono::high_resolution_clock::now();
+
+    pred.append(rv.sender, rv.mv);
+
+    if (stage1_us) *stage1_us = std::chrono::duration<double, std::micro>(t1 - t0).count();
+    return true;
+}
+
+// Tier 2: evidence dispatch alone, against a position-free state.
+static bool probeStage2(OlsCtraEngine& engine, const ReceivedVector& rv,
+                        double distError = 0.0, double* stage2_us = nullptr)
+{
+    Predictor& pred = engine.predictor();
+    Scorer& scorer = engine.scorer();
+    const EngineConfig& cfg = engine.config();
+
+    std::deque<KinematicState> dummyHistory;
+    KinematicState dummyState;
+    dummyState.time = rv.mv.time;
+    dummyState.speed = rv.mv.speed;
+    dummyState.yawRate = rv.mv.yawRate;
+
+    const auto& history = pred.isTracked(rv.sender) ? pred.history(rv.sender) : dummyHistory;
+    KinematicState pastState = (!history.empty()) ? history.back() : dummyState;
+
+    PhysicalInvarianceResult physicsResult = consistencyCheck<CartesianCoordinatePolicy>(
+        pastState, dummyState, cfg.speedToleranceMps);
+    double dynamicMaxPosDev = computeDynamicThreshold(physicsResult, pastState.yawRate, cfg);
+
+    ConfidenceContext context {
+        history,
+        pastState,
+        dummyState,
+        scorer.confidenceOf(rv.sender),
+        distError,
+        physicsResult,
+        dynamicMaxPosDev,
+        rv.sender
+    };
+
+    const auto t0 = std::chrono::high_resolution_clock::now();
+    const double newScore = scorer.evaluate(context);
+    const auto t1 = std::chrono::high_resolution_clock::now();
+
+    if (stage2_us) *stage2_us = std::chrono::duration<double, std::micro>(t1 - t0).count();
+    return (newScore < 0.5);
+}
 
 struct BenchmarkResult {
     std::string dataset;
@@ -92,11 +193,11 @@ BenchmarkResult runOlsCtraPipeline(const std::string& dataPath, const std::strin
     res.stage1 = "ols-ctra";
     res.stage2 = stage2;
 
-    double maxPosDev = 4.3506;
-    double speedWeight = 5.2264;
-    double yawWeight = 0.6536;
+    double maxPosDev = ConstantsPhysics::DEFAULT_MAX_POS_DEV;
+    double speedWeight = ConstantsPhysics::DEFAULT_CONTEXT_SPEED_WEIGHT;
+    double yawWeight = ConstantsPhysics::DEFAULT_CONTEXT_YAW_WEIGHT;
 
-    auto all_messages = ParquetMessageExtractor::extractMessages(dataPath);
+    auto all_messages = loadMotionVectors(dataPath);
     if (all_messages.empty()) {
         std::cerr << "No messages extracted from: " << dataPath << "\n";
         return res;
@@ -105,7 +206,11 @@ BenchmarkResult runOlsCtraPipeline(const std::string& dataPath, const std::strin
     size_t limit = (maxMsgs > 0 && maxMsgs < (int)all_messages.size()) ? maxMsgs : all_messages.size();
     res.total_messages = (int)limit;
 
-    TrustEvaluationEngine engine("HistoryAwareCTRA", "BetaReputation", maxPosDev, speedWeight, yawWeight, true);
+    EngineConfig cfg;
+    cfg.maxPosDev = maxPosDev;
+    cfg.contextSpeedWeight = speedWeight;
+    cfg.contextYawWeight = yawWeight;
+    OlsCtraEngine engine("HistoryAwareCTRA", "BetaReputation", cfg);
 
     double sum_s1_us = 0.0;
     double sum_s2_us = 0.0;
@@ -115,20 +220,23 @@ BenchmarkResult runOlsCtraPipeline(const std::string& dataPath, const std::strin
     if (tier == "1") {
         for (size_t i = 0; i < limit; ++i) {
             double s1 = 0.0;
-            engine.runStage1(all_messages[i], &s1);
+            probeStage1(engine, all_messages[i], &s1);
             sum_s1_us += s1;
         }
     } else if (tier == "2") {
         for (size_t i = 0; i < limit; ++i) {
             double s2 = 0.0;
-            engine.runStage2(all_messages[i], 1.5, &s2);
+            probeStage2(engine, all_messages[i], 1.5, &s2);
             sum_s2_us += s2;
         }
     } else {
         // Tier 3 or all
         for (size_t i = 0; i < limit; ++i) {
             double s1 = 0.0, s2 = 0.0;
-            engine.processMessage(all_messages[i], &s1, &s2);
+            StageTiming timing;
+            engine.onMotionVector(all_messages[i].sender, all_messages[i].mv, &timing);
+            s1 = timing.predictor_us;
+            s2 = timing.scorer_us;
             sum_s1_us += s1;
             sum_s2_us += s2;
         }
@@ -160,7 +268,7 @@ BenchmarkResult runF2mdPipeline(const std::string& dataPath, const std::string& 
     res.stage1 = stage1;
     res.stage2 = stage2;
 
-    auto all_messages = F2MDParquetExtractor::extractMessages(dataPath);
+    auto all_messages = loadBasicSafetyMessages(dataPath);
     if (all_messages.empty()) {
         std::cerr << "No BSM messages extracted from: " << dataPath << "\n";
         return res;

@@ -5,7 +5,7 @@ Comprehensive Ablation Study Wrapper for Checkers Pipeline across VeReMi 0709 su
 
 Evaluates where each component succeeds, fails, or is absent:
 1. Full Model (P0: Yes, DYN: Yes, DR: Yes, OLS: Yes)
-2. w/o Phase 0 (P0: No, DYN: Yes, DR: Yes, OLS: Yes) [--no-phase0]
+2. w/o Consistency Check (CC: No, DYN: Yes, DR: Yes, OLS: Yes) [--no-consistency]
 3. w/o Dynamic Thresh (P0: Yes, DYN: No, DR: Yes, OLS: Yes) [--no-dyn-thresh]
 4. w/o Dead-Reckoning (P0: Yes, DYN: Yes, DR: No, OLS: No) [--no-dr]
 5. w/o OLS Smoothing (Bare CTRA) (P0: Yes, DYN: Yes, DR: Yes, OLS: No) [--no-ols]
@@ -61,13 +61,13 @@ CHECKER_CONFIGS = [
     },
     {
         "id": "no_p0",
-        "name": "w/o Phase 0",
-        "short": "w/o P0",
+        "name": "w/o Consistency Check",
+        "short": "w/o CC",
         "p0": "No",
         "dyn": "Yes",
         "dr": "Yes",
         "ols": "Yes",
-        "flags": ["--no-phase0"]
+        "flags": ["--no-consistency"]
     },
     {
         "id": "no_dyn",

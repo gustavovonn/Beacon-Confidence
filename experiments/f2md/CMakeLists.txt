@@ -11,17 +11,24 @@ if(STATIC_BUILD)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static")
 endif()
 
+# Shared V2X motion primitives (header-only)
+set(V2X_MISC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../v2x-misc)
+
+# This paper's confidence mechanism, shared by both experiments
+set(MECHANISM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/..)
+
 # Include directories
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    ${V2X_MISC_DIR}/include
+    ${MECHANISM_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/veins/modules/application/f2md
     ${CMAKE_CURRENT_SOURCE_DIR}/veins/base/utils
 )
 
-# Common sources (OLS-CTRA and BetaReputation from root src/)
-file(GLOB_RECURSE COMMON_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/../src/*.cc")
+# The mechanism's confidence evaluators (motion primitives are header-only)
+file(GLOB COMMON_SOURCES "${MECHANISM_DIR}/src/*.cc")
 
 # F2MD sources (excluding OMNeT++/Veins simulation and network wrappers)
 file(GLOB_RECURSE F2MD_SOURCES 

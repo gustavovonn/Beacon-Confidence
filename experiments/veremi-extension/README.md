@@ -212,10 +212,10 @@ python scripts/plot_scorer_roc.py
 ### F. Checker Pipeline Ablation (`run_checker_ablation.py`)
 Measures the marginal contribution of each pipeline component by disabling one at a time:
 
-| Configuration | Flag | Phase 0 | Dynamic threshold | Dead-reckoning | OLS |
+| Configuration | Flag | Consistency check | Dynamic threshold | Dead-reckoning | OLS |
 |:---|:---|:---:|:---:|:---:|:---:|
 | Full model | — | yes | yes | yes | yes |
-| w/o Phase 0 | `--no-phase0` | no | yes | yes | yes |
+| w/o consistency check | `--no-consistency` | no | yes | yes | yes |
 | w/o dynamic threshold | `--no-dyn-thresh` | yes | no | yes | yes |
 | w/o dead-reckoning | `--no-dr` | yes | yes | no | no |
 | w/o OLS smoothing (bare CTRA) | `--no-ols` | yes | yes | yes | no |
