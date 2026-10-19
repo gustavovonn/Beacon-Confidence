@@ -10,8 +10,7 @@ ARCH="${ARCH:-riscv}"
 CROSS_COMPILE="${CROSS_COMPILE:-riscv64-linux-gnu-}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BASE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-BUSYBOX_DIR="$BASE_DIR/busybox"
+BUSYBOX_DIR="$SCRIPT_DIR/busybox"
 INSTALL_DIR="$BUSYBOX_DIR/_install"
 
 echo "=============================================================================="

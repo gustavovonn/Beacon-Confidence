@@ -28,7 +28,7 @@ from sklearn.metrics import roc_curve, auc
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
-WORKSPACE_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "../../.."))
+WORKSPACE_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "../.."))
 RUNNER_BIN = os.path.join(PROJECT_ROOT, "build", "veremi_runner")
 RESULTS_DIR = os.path.join(PROJECT_ROOT, "results", "scorers")
 ARTIFACTS_DIR = "/home/gust/.gemini/antigravity-ide/brain/32dd96fc-654f-4703-a7b9-044fdad23e23"
@@ -70,7 +70,7 @@ SCORERS = [
 def find_parquet_dirs(scenario):
     candidates = [
         os.path.join(WORKSPACE_ROOT, "veremi-extension", "parquet", scenario, "VeReMi_*"),
-        os.path.join(WORKSPACE_ROOT, "experiments", "veremi-extension", "parquet", scenario, "VeReMi_*"),
+        os.path.join(WORKSPACE_ROOT, "detection-eval", "parquet", scenario, "VeReMi_*"),
         os.path.join(PROJECT_ROOT, "parquet", scenario, "VeReMi_*"),
     ]
     dirs = []

@@ -1,28 +1,40 @@
 # A Lightweight Mechanism to Attribute Confidence to V2X Messages based on Physical Consistence
 
 This repository hosts two offline evaluation experiments that share a common C++ core for
-dead-reckoning prediction and trust scoring of V2X messages. Both are driven by the
+motion prediction and confidence scoring of V2X kinematic beacons. Both are driven by the
 [VeReMi Extension](https://zenodo.org/records/20090854) dataset and run outside of OMNeT++,
-so they can be profiled and embedded hardware.
+so they can be profiled on desktop and embedded hardware.
 
 ## Repository Layout
 
+- `include/`, `src/` — The confidence mechanism evaluated in this work, shared by both
+  experiments: `BeaconConfidenceEngine` (Predictor + Scorer), the consistency and predictive
+  checks, the confidence evaluators (Beta reputation, EWMA, majority vote), `EngineConfig`
+  and the paper's calibrated constants (`MechanismConstants.h`).
+- `libs/v2x-misc/` — Reusable V2X motion primitives, header-only and free of any detection
+  policy: WGS-84 geodesy, coordinate policies, the CTRA/CA integrator, CTRA motion models and
+  OLS kinematic regression.
 - `veremi-extension/` — Dataset pipeline: downloads the VeReMi Extension traces from Zenodo,
   extracts the nested archives, and converts the JSON records into Parquet format.
-- `libs/v2x-misc/` — Reusable V2X motion primitives (header-only): coordinate policies, CTRA
-  dead-reckoning models, kinematic regression, physical invariance checks, and trust evaluators.
-- `detection-eval/` — Standalone `veremi_runner` plus the Python analysis suite
-  (window sweeps, scorer comparison, checker ablation, ROC curves).
-- `computational-eval/` — `offline_evaluator`, a decoupled F2MD reference implementation used to
-  compare OLS-CTRA + Beta-Reputation against F2MD's baseline checkers, including RISC-V
-  cross-compilation and bare-metal benchmarking.
+- `detection-eval/` — Detection-quality experiment: the `veremi_runner` binary (reads Parquet)
+  plus the Python analysis suite (window sweeps, scorer comparison, checker ablation, ROC curves).
+- `computational-eval/` — Computational-cost experiment: `offline_evaluator`, which runs the
+  mechanism and a decoupled F2MD reference implementation side by side on zero-dependency `.bin`
+  traces.
+- `vf2-setup/` — Cross-compilation and netboot packaging of `offline_evaluator` for the StarFive
+  VisionFive 2 (RISC-V), including the kernel image and device tree served over TFTP.
+- `run_veremi_batch.sh` — Entry point for the detection experiment (builds the runner, sets up its
+  Python environment and launches the batch sweep).
 
 ## Prerequisites
 
 - Git
 - CMake (3.16 or newer) and a C++20 compiler
 - Python 3
-- Apache Arrow and Parquet for C++ (`libarrow-dev`, `libparquet-dev`)
+- Apache Arrow and Parquet for C++ (`libarrow-dev`, `libparquet-dev`) — only for
+  `detection-eval`; `computational-eval` has no C++ dependencies beyond the standard library
+- For `vf2-setup` only: a RISC-V cross toolchain (`riscv64-linux-gnu-gcc`/`g++`), `cpio`, `gzip`,
+  and a TFTP server
 
 *Note: The primary tested setup for this framework was on Ubuntu 24.04.4 LTS.*
 
@@ -113,14 +125,27 @@ cmake --build build -j$(nproc)
 ```
 
 3. **Standalone C++ Engine Profiling:** To evaluate computational cost and latency outside of the
-OMNeT++ environment (e.g., for embedded hardware benchmarking), you can run the core
-`offline_evaluator` directly with the `--profile` flag on any parquet data folder.
+OMNeT++ environment, run `offline_evaluator` directly with the `--profile` flag on a `.bin` trace
+produced by the step above.
 ```bash
-./computational-eval/build/offline_evaluator --tier 3 --stage1 ols-ctra --stage2 beta-reputation --dir <path-to-scenario> --profile
+./computational-eval/build/offline_evaluator --tier 3 --stage1 ols-ctra --stage2 beta-reputation --dir computational-eval/veremi/bin/ConstPos_0709.bin --profile
 ```
 
-See [computational-eval/README.md](computational-eval/README.md) for the automated benchmark runners,
-the dependency-free standalone build, and RISC-V cross-compilation.
+See [computational-eval/README.md](computational-eval/README.md) for the tiers, stages and data
+preparation details.
+
+### RISC-V Benchmark on the VisionFive 2
+
+`vf2-setup/vf2_setup.sh` cross-compiles a static `offline_evaluator`, builds a BusyBox userland,
+prepares the `.bin` traces, packs everything into an initramfs and deploys it, together with
+`vf2-setup/config/Image` and the JH7110 device tree, to `/srv/tftp` for netboot:
+
+```bash
+./vf2-setup/vf2_setup.sh               # full pipeline, prompts before touching the network/TFTP
+./vf2-setup/vf2_setup.sh --skip-tftp   # build and package only
+```
+
+On the board, run `cd /bench && ./run_benchmarks_riscv.sh`.
 
 ## References
 

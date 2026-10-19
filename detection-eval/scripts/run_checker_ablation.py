@@ -33,7 +33,7 @@ import numpy as np
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
-WORKSPACE_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "../../.."))
+WORKSPACE_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "../.."))
 RUNNER_BIN = os.path.join(PROJECT_ROOT, "build", "veremi_runner")
 RESULTS_DIR = os.path.join(PROJECT_ROOT, "results", "ablations")
 
@@ -104,7 +104,7 @@ CHECKER_CONFIGS = [
 def find_parquet_dirs(scenario):
     candidates = [
         os.path.join(WORKSPACE_ROOT, "veremi-extension", "parquet", scenario, "VeReMi_*"),
-        os.path.join(WORKSPACE_ROOT, "experiments", "veremi-extension", "parquet", scenario, "VeReMi_*"),
+        os.path.join(WORKSPACE_ROOT, "detection-eval", "parquet", scenario, "VeReMi_*"),
         os.path.join(PROJECT_ROOT, "parquet", scenario, "VeReMi_*"),
         os.path.join(WORKSPACE_ROOT, "parquet", scenario, "VeReMi_*"),
     ]

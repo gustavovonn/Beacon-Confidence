@@ -341,7 +341,7 @@ def main():
     args = parser.parse_args()
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    workspace_dir = os.path.abspath(os.path.join(script_dir, "../../.."))
+    workspace_dir = os.path.abspath(os.path.join(script_dir, "../.."))
     results_dir = os.path.join(os.path.dirname(script_dir), "results")
     plots_dir = os.path.join(results_dir, "plots")
     os.makedirs(plots_dir, exist_ok=True)

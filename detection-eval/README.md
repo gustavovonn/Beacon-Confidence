@@ -1,6 +1,6 @@
-# VeReMi Extension: High-Performance Trust & Dead-Reckoning Benchmark Suite
+# Detection Evaluation: Confidence Attribution on the VeReMi Extension
 
-High-throughput native C++ Parquet evaluation runner and Python analysis suite for vehicular misbehavior detection. Evaluates history-aware Dead Reckoning (`HistoryAwareCTRA`) and trust mechanisms (`BetaReputation`) across the extended VeReMi dataset under varied traffic densities (rush hour `0709` vs. afternoon `1416`) and attack models.
+Native C++ Parquet evaluation runner and Python analysis suite for vehicular misbehavior detection. Evaluates the history-aware CTRA motion model (`HistoryAwareCTRA`) and confidence evaluators (`BetaReputation`, `EWMA`, `MajorityVote`) across the VeReMi Extension dataset under varied traffic densities (rush hour `0709` vs. afternoon `1416`) and attack models.
 
 ---
 
@@ -9,7 +9,8 @@ High-throughput native C++ Parquet evaluation runner and Python analysis suite f
 ```
 detection-eval/
 ├── CMakeLists.txt                       # CMake build definition (links Arrow & Parquet)
-├── veremi_runner.cc                     # Native C++ streaming Parquet processor
+├── runner.cc                            # Native C++ runner (builds the veremi_runner binary)
+├── ParquetTraceReader.h                 # Parquet trace decoder (Arrow)
 ├── requirements.txt                     # Python evaluation dependencies
 ├── README.md                            # Documentation
 ├── build/                               # Compiled C++ binaries (veremi_runner)
@@ -33,12 +34,15 @@ detection-eval/
 
 ### High-Speed Native C++ Engine (`veremi_runner`)
 - **Direct Parquet Ingestion**: Leverages Apache Arrow C++ and Parquet APIs to read columnar BSM traces with zero intermediate conversion overhead.
-- **Dead Reckoning Models**:
-  - `CartesianHistoryAwareCTRA`: Fits historical position, speed, acceleration, and yaw rate across a parametric window size (W) via linear regression, integrating Cartesian CTRA equations to predict next-state kinematics.
-  - `CartesianCTRA`: Instantaneous Constant Turn Rate and Acceleration dead-reckoning fallback.
-- **Trust Evaluation**:
-  - `BetaReputation`: Continuously updates α and β reputation parameters based on dead-reckoning deviation error and dynamic context bounds (speed and yaw weights).
-- **Extreme Throughput**: Sustains over **200,000–350,000 messages/second** (average message latency between **3 µs and 6 µs**), making it well-suited for processing millions of vehicular records in seconds.
+- **Shared engine**: drives `BeaconConfidenceEngine` from the repository's `include/` (Predictor + Scorer),
+  with the motion primitives from `libs/v2x-misc/`.
+- **Motion Models**:
+  - `HistoryAwareCTRA`: Estimates acceleration and yaw rate as OLS slopes of speed and heading over the last W snapshots, then integrates the CTRA (or, for negligible yaw rate, CA) equations to predict the next position.
+  - `CTRA`: Single-step CTRA driven directly by the reported payload values.
+- **Confidence Evaluation**:
+  - `BetaReputation`: Counterless Beta reputation; updates α and β from the consistency verdict and the prediction error against the context-aware dynamic threshold.
+  - `EWMA`, `MajorityVote`: Baseline aggregators for comparison.
+- **Throughput**: With `--profile` on a `Release` build, the engine alone runs at roughly 0.5–0.6 µs per message (about 1.7–2.0 M messages/s) on the development laptop. Batch runs report higher per-message figures because they include Parquet decoding. Numbers are host-dependent.
 
 ### Automated Evaluation & Decision Pipeline
 - **Automatic Attacker Identification**: Direct extraction of malicious node IDs from VeReMi trace nomenclature (`traceJSON-[nodeID]-[pseudoID]-A[type]-*`).
@@ -77,8 +81,8 @@ This produces the high-speed executable: `build/veremi_runner`.
 
 *The `run_veremi_batch.sh` wrapper also performs this step: it configures `build/` on
 first use and runs `cmake --build` on every invocation, so the binary is always in sync
-with `veremi_runner.cc`, `../src/*.cc` and `../include/*.h` (a no-op when nothing
-changed). Export `CMAKE_BUILD_TYPE=Release` for the optimized build used when reporting
+with `runner.cc`, `../src/*.cc`, `../include/*.h` and `../libs/v2x-misc/include/*.h` (a no-op
+when nothing changed). Export `CMAKE_BUILD_TYPE=Release` for the optimized build used when reporting
 latency and throughput figures, or `VEREMI_SKIP_BUILD=1` to reuse the existing binary
 untouched.*
 
@@ -93,11 +97,9 @@ Default search locations:
 2. `<repo_root>/detection-eval/parquet/<ScenarioName>/VeReMi_*`
 3. `<repo_root>/parquet/<ScenarioName>/VeReMi_*`
 
-Supported scenarios include both rush hour (`0709`) and non-rush hour (`1416`) traces:
-- `ConstPosOffset_0709`, `ConstPosOffset_1416`
-- `ConstSpeedOffset_0709`, `ConstSpeed_1416`
-- `ConstPos_1416`
-- `RandomSpeed_1416`, `RandomSpeedOffset_1416`
+Supported scenarios: the eight fault profiles (`ConstPos`, `ConstPosOffset`, `ConstSpeed`,
+`ConstSpeedOffset`, `RandomPos`, `RandomPosOffset`, `RandomSpeed`, `RandomSpeedOffset`), each in
+a rush hour (`_0709`) and an afternoon (`_1416`) variant — 16 scenarios in total.
 
 ---
 

@@ -4,7 +4,7 @@
 # ==============================================================================
 # Orchestrates:
 #   1. Toolchain: Verifies cross-compilation tools
-#   2. BusyBox Userland: Fetches/builds static userland via busybox_build_riscv.sh
+#   2. BusyBox: Fetches/builds static via busybox_build_riscv.sh
 #   3. Project Code: Cross-compiles static C++ offline_evaluator for RISC-V 64-bit
 #   4. Project Data: Verifies/converts binary traces into veremi/bin/
 #   5. Rootfs Staging & Packaging: Stages /bench and creates initramfs.cpio.gz
@@ -16,16 +16,23 @@ set -e
 ARCH="${ARCH:-riscv}"
 CROSS_COMPILE="${CROSS_COMPILE:-riscv64-linux-gnu-}"
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BASE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-BUSYBOX_DIR="$BASE_DIR/busybox"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"      # vf2-setup/
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+BASE_DIR="$REPO_ROOT/computational-eval"          # where the evaluator and its data live
+CONFIG_DIR="$SCRIPT_DIR/config"                   # prebuilt kernel Image + device tree
+ETL_DIR="$BASE_DIR/scripts"                       # parquet/bin conversion scripts
+# Packaging artefacts stay under vf2-setup/; only the cross-build and the trace
+# data live beside the evaluator they belong to.
+BUSYBOX_DIR="$SCRIPT_DIR/busybox"
 INSTALL_DIR="$BUSYBOX_DIR/_install"
 BUILD_RISCV_DIR="$BASE_DIR/build-riscv"
 VEREMI_BIN_DIR="$BASE_DIR/veremi/bin"
 VEREMI_PARQUET_DIR="$BASE_DIR/veremi/parquet"
-INITRAMFS_CPIO="$BASE_DIR/initramfs.cpio"
-INITRAMFS_GZ="$BASE_DIR/initramfs.cpio.gz"
+INITRAMFS_CPIO="$SCRIPT_DIR/initramfs.cpio"
+INITRAMFS_GZ="$SCRIPT_DIR/initramfs.cpio.gz"
 TFTP_DIR="${TFTP_DIR:-/srv/tftp}"
+KERNEL_IMAGE="$CONFIG_DIR/Image"
+DEVICE_TREE="$CONFIG_DIR/jh7110-starfive-visionfive-2-v1.3b.dtb"
 TFTP_IFACE="${TFTP_IFACE:-enp2s0}"
 TFTP_HOST_IP="${TFTP_HOST_IP:-192.168.1.100/24}"
 TFTP_NM_PROFILE="${TFTP_NM_PROFILE:-vf2-tftp}"
@@ -106,6 +113,8 @@ echo " Cross Compiler      : ${CROSS_COMPILE}gcc / ${CROSS_COMPILE}g++"
 echo " Workspace Root      : $BASE_DIR"
 echo " Staging Rootfs      : $INSTALL_DIR"
 echo " Initramfs Payload   : $INITRAMFS_GZ"
+echo " Evaluator Source    : $BASE_DIR"
+echo " Boot Config         : $CONFIG_DIR"
 echo " TFTP Destination    : $TFTP_DIR"
 echo " TFTP Host Interface : $TFTP_IFACE ($TFTP_HOST_IP)"
 echo "=============================================================================="
@@ -151,7 +160,7 @@ build_project_code() {
         rm -rf "$BUILD_RISCV_DIR"
     fi
 
-    cmake -B "$BUILD_RISCV_DIR" -S . \
+    cmake -B "$BUILD_RISCV_DIR" -S "$BASE_DIR" \
         -DCMAKE_SYSTEM_NAME=Linux \
         -DCMAKE_SYSTEM_PROCESSOR=riscv64 \
         -DCMAKE_C_COMPILER="${CROSS_COMPILE}gcc" \
@@ -201,12 +210,12 @@ prepare_project_data() {
 
     if [ "$PARQUET_COUNT" -eq 0 ]; then
         echo "[!] No parquet traces found. Invoking interpolate_veremi.py --all-profiles..."
-        "$PYTHON_BIN" "$SCRIPT_DIR/interpolate_veremi.py" --all-profiles
+        "$PYTHON_BIN" "$ETL_DIR/interpolate_veremi.py" --all-profiles
     fi
 
     # Convert Parquet to binary
     echo "[*] Converting Parquet traces to zero-dependency binary format (.bin)..."
-    "$PYTHON_BIN" "$SCRIPT_DIR/export_parquet_to_bin.py" -i "$VEREMI_PARQUET_DIR" -o "$VEREMI_BIN_DIR"
+    "$PYTHON_BIN" "$ETL_DIR/export_parquet_to_bin.py" -i "$VEREMI_PARQUET_DIR" -o "$VEREMI_BIN_DIR"
 
     BIN_COUNT=$(ls -1 "$VEREMI_BIN_DIR"/*.bin 2>/dev/null | wc -l)
     if [ "$BIN_COUNT" -eq 0 ]; then
@@ -291,10 +300,10 @@ EOF
 }
 
 # ------------------------------------------------------------------------------
-# Module 6: TFTP Boot Deployment & Connection Setup (Modular Architecture)
+# Module 6: TFTP Boot Deployment & Connection Setup
 # ------------------------------------------------------------------------------
 
-# Sub-module 6.1: Host Network Interface & Persistent Static IP Configuration
+# Host Network Interface & Persistent Static IP Configuration
 configure_tftp_network() {
     echo ""
     echo "[*] [6.1] Configuring host network interface for TFTP ($TFTP_IFACE -> $TFTP_HOST_IP)..."
@@ -342,7 +351,7 @@ configure_tftp_network() {
     fi
 }
 
-# Sub-module 6.2: TFTP Daemon / Socket Verification & Activation
+# TFTP Daemon / Socket Verification & Activation
 ensure_tftp_daemon() {
     echo ""
     echo "[*] [6.2] Verifying TFTP server daemon (tftpd.socket)..."
@@ -355,13 +364,30 @@ ensure_tftp_daemon() {
     fi
 }
 
-# Sub-module 6.3: TFTP Payload Deployment
+# TFTP Payload Deployment
 deploy_tftp_payload() {
     echo ""
-    echo "[*] [6.3] Deploying initramfs to $TFTP_DIR/initramfs.cpio.gz..."
+    echo "[*] [6.3] Deploying boot payload to $TFTP_DIR..."
     sudo mkdir -p "$TFTP_DIR"
+
+    # Kernel and device tree ship from vf2-setup/config/, so the board can be
+    # netbooted without any artefact built outside this repository.
+    if [ -f "$KERNEL_IMAGE" ]; then
+        sudo cp -f "$KERNEL_IMAGE" "$TFTP_DIR/Image"
+        echo "[+] Kernel      : $TFTP_DIR/Image"
+    else
+        echo "[!] Warning: kernel image not found at $KERNEL_IMAGE"
+    fi
+
+    if [ -f "$DEVICE_TREE" ]; then
+        sudo cp -f "$DEVICE_TREE" "$TFTP_DIR/$(basename "$DEVICE_TREE")"
+        echo "[+] Device tree : $TFTP_DIR/$(basename "$DEVICE_TREE")"
+    else
+        echo "[!] Warning: device tree not found at $DEVICE_TREE"
+    fi
+
     sudo cp -f "$INITRAMFS_GZ" "$TFTP_DIR/initramfs.cpio.gz"
-    echo "[+] Deployed successfully: $TFTP_DIR/initramfs.cpio.gz"
+    echo "[+] Initramfs   : $TFTP_DIR/initramfs.cpio.gz"
 }
 
 # Module 6 Orchestrator
@@ -407,7 +433,10 @@ deploy_tftp() {
             echo "    sudo nmcli connection add type ethernet con-name $TFTP_NM_PROFILE ifname $TFTP_IFACE ip4 $TFTP_HOST_IP"
             echo "    sudo nmcli connection up $TFTP_NM_PROFILE"
             echo "    sudo systemctl enable --now tftpd.socket"
-            echo "    sudo mkdir -p $TFTP_DIR && sudo cp $INITRAMFS_GZ $TFTP_DIR/initramfs.cpio.gz"
+            echo "    sudo mkdir -p $TFTP_DIR"
+            echo "    sudo cp $KERNEL_IMAGE $TFTP_DIR/Image"
+            echo "    sudo cp $DEVICE_TREE $TFTP_DIR/"
+            echo "    sudo cp $INITRAMFS_GZ $TFTP_DIR/initramfs.cpio.gz"
             echo ""
             ;;
     esac

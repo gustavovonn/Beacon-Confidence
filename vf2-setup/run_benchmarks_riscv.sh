@@ -1,14 +1,17 @@
 #!/bin/sh
 # ==============================================================================
 # Three-Tier Computational Cost Benchmark Runner - RISC-V SBC Platform
-# Targets: StarFive VisionFive 2 (JH7110 RV64GC), QEMU riscv64, BusyBox Ramdisk
-# Strict POSIX /bin/sh syntax
+# Targets: StarFive VisionFive 2 (JH7110)
 # ==============================================================================
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-F2MD_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# On the board this script runs from /bench and everything sits beside it, so
+# SCRIPT_DIR alone resolves. On the host it lives in vf2-setup/, and the binary,
+# traces and results belong to computational-eval one level up.
+EVAL_DIR="$(cd "$SCRIPT_DIR/../computational-eval" 2>/dev/null && pwd || echo "$SCRIPT_DIR")"
 
 # Resolve binary with dynamic fallback hierarchy (or override with -b)
 DEFAULT_BIN=""
@@ -16,12 +19,12 @@ if [ -x "$SCRIPT_DIR/offline_evaluator" ]; then
     DEFAULT_BIN="$SCRIPT_DIR/offline_evaluator"
 elif [ -x "./offline_evaluator" ]; then
     DEFAULT_BIN="./offline_evaluator"
-elif [ -x "$F2MD_DIR/build-riscv/offline_evaluator_stripped" ]; then
-    DEFAULT_BIN="$F2MD_DIR/build-riscv/offline_evaluator_stripped"
-elif [ -x "$F2MD_DIR/build-riscv/offline_evaluator" ]; then
-    DEFAULT_BIN="$F2MD_DIR/build-riscv/offline_evaluator"
-elif [ -x "$F2MD_DIR/build/offline_evaluator" ]; then
-    DEFAULT_BIN="$F2MD_DIR/build/offline_evaluator"
+elif [ -x "$EVAL_DIR/build-riscv/offline_evaluator_stripped" ]; then
+    DEFAULT_BIN="$EVAL_DIR/build-riscv/offline_evaluator_stripped"
+elif [ -x "$EVAL_DIR/build-riscv/offline_evaluator" ]; then
+    DEFAULT_BIN="$EVAL_DIR/build-riscv/offline_evaluator"
+elif [ -x "$EVAL_DIR/build/offline_evaluator" ]; then
+    DEFAULT_BIN="$EVAL_DIR/build/offline_evaluator"
 fi
 
 # Resolve default binary trace dataset (.bin only for RISC-V zero-dependency)
@@ -30,13 +33,13 @@ if [ -f "$SCRIPT_DIR/data/ConstPos_0709.bin" ]; then
     DEFAULT_DATA="$SCRIPT_DIR/data/ConstPos_0709.bin"
 elif [ -f "./data/ConstPos_0709.bin" ]; then
     DEFAULT_DATA="./data/ConstPos_0709.bin"
-elif [ -f "$F2MD_DIR/veremi/bin/ConstPos_0709.bin" ]; then
-    DEFAULT_DATA="$F2MD_DIR/veremi/bin/ConstPos_0709.bin"
+elif [ -f "$EVAL_DIR/veremi/bin/ConstPos_0709.bin" ]; then
+    DEFAULT_DATA="$EVAL_DIR/veremi/bin/ConstPos_0709.bin"
 fi
 
 # Results directory
-if [ -d "$F2MD_DIR/results" ]; then
-    RESULTS_DIR="$F2MD_DIR/results"
+if [ -d "$EVAL_DIR/results" ]; then
+    RESULTS_DIR="$EVAL_DIR/results"
 elif [ -d "$SCRIPT_DIR/results" ]; then
     RESULTS_DIR="$SCRIPT_DIR/results"
 else
@@ -174,7 +177,7 @@ fi
 if [ "$(id -u)" = "0" ]; then
     if command -v nice >/dev/null 2>&1; then
         CMD_PREFIX="nice -n -20 $CMD_PREFIX"
-        echo "[*] Running with maximum process priority (nice -20)"
+        echo "[*] Running with maximum process priority"
     fi
     if [ -w /proc/sys/vm/drop_caches ]; then
         sync
@@ -258,8 +261,8 @@ if [ "$ALL_PROFILES" = "1" ]; then
         DATA_DIR="$SCRIPT_DIR/data"
     elif [ -d "./data" ]; then
         DATA_DIR="./data"
-    elif [ -d "$F2MD_DIR/veremi/bin" ]; then
-        DATA_DIR="$F2MD_DIR/veremi/bin"
+    elif [ -d "$EVAL_DIR/veremi/bin" ]; then
+        DATA_DIR="$EVAL_DIR/veremi/bin"
     else
         DATA_DIR="./data"
     fi
@@ -275,8 +278,8 @@ if [ "$ALL_PROFILES" = "1" ]; then
             TARGET_FILE="$SCRIPT_DIR/data/${prof}.bin"
         elif [ -f "./data/${prof}.bin" ]; then
             TARGET_FILE="./data/${prof}.bin"
-        elif [ -f "$F2MD_DIR/veremi/bin/${prof}.bin" ]; then
-            TARGET_FILE="$F2MD_DIR/veremi/bin/${prof}.bin"
+        elif [ -f "$EVAL_DIR/veremi/bin/${prof}.bin" ]; then
+            TARGET_FILE="$EVAL_DIR/veremi/bin/${prof}.bin"
         fi
 
         if [ -n "$TARGET_FILE" ]; then
@@ -284,7 +287,7 @@ if [ "$ALL_PROFILES" = "1" ]; then
             echo ">>> [Profile: $prof] Ingesting $TARGET_FILE..."
             run_suite_for_dataset "$TARGET_FILE"
         else
-            echo "[!] Warning: Profile $prof not found in $DATA_DIR, $SCRIPT_DIR/data, or $F2MD_DIR/veremi/bin"
+            echo "[!] Warning: Profile $prof not found in $DATA_DIR, $SCRIPT_DIR/data, or $EVAL_DIR/veremi/bin"
         fi
     done
 else

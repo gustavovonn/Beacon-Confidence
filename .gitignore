@@ -84,7 +84,6 @@ veremi-extension/data/
 veremi-extension/parquet/
 
 # Experiment artifacts
-experiments/veremi-extension/honest_baseline_tmp/
-experiments/f2md/veremi/
-experiments/f2md/busybox/
-experiments/f2md/initramfs.cpio.gz
+computational-eval/veremi/*
+vf2-setup/initramfs.cpio.gz
+vf2-setup/busybox/
