@@ -118,6 +118,7 @@ inline double regressedYawRate(const std::deque<KinematicState>& history,
  *
  * Predicts spatial position, computes distance error, and sets dynamic threshold.
  * If enableDynThresh == false, falls back to the static baseline maxPosDev.
+ * If outYawRate is given, it receives the regressed yaw rate used by d_max.
  *
  * @return true if distError <= dynamicMaxPosDev (passed the predictive check).
  */
@@ -132,7 +133,8 @@ inline bool predictiveCheck(
     double& outDistError,
     double& outDynamicMaxPosDev,
     bool enableDynThresh = true,
-    bool enablePrediction = true)
+    bool enablePrediction = true,
+    double* outYawRate = nullptr)
 {
     if (enablePrediction && drModel) {
         PredictedState expectedState;
@@ -143,8 +145,9 @@ inline bool predictiveCheck(
     }
 
     if (enableDynThresh) {
-        outDynamicMaxPosDev = computeDynamicThreshold(
-            physics, regressedYawRate(history, pastState), params);
+        const double yawRate = regressedYawRate(history, pastState);
+        if (outYawRate) *outYawRate = yawRate;
+        outDynamicMaxPosDev = computeDynamicThreshold(physics, yawRate, params);
     } else {
         outDynamicMaxPosDev = params.maxPosDev;
     }

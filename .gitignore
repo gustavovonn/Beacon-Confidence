@@ -87,3 +87,4 @@ veremi-extension/parquet/
 computational-eval/veremi/*
 vf2-setup/initramfs.cpio.gz
 vf2-setup/busybox/
+refs/

@@ -27,6 +27,9 @@ struct ConfidenceResult {
     double confidence       = 1.0;   // Posterior confidence S in [0,1] for this sender.
     double distError        = 0.0;   // Prediction error epsilon [m].
     double dynamicMaxPosDev = 0.0;   // Context-aware threshold d_max [m].
+    double dt               = 0.0;   // Inter-frame interval used by d_max [s].
+    double safeSpeed        = 0.0;   // Sanitized speed v_safe used by d_max.
+    double yawRateHat       = 0.0;   // Regressed yaw rate omega_hat used by d_max.
     bool consistencyPassed  = true;  // Physical invariance verdict.
     bool predictivePassed   = true;  // Trajectory prediction verdict.
 
@@ -108,11 +111,13 @@ public:
         result.predictivePassed = predictiveCheck(
             m_predictor.model(), history, pastState, mv, dt, m_cfg, physics,
             result.distError, result.dynamicMaxPosDev,
-            m_cfg.enableDynThresh, m_cfg.enablePrediction);
+            m_cfg.enableDynThresh, m_cfg.enablePrediction, &result.yawRateHat);
 
         const auto t1 = std::chrono::high_resolution_clock::now();
 
         result.consistencyPassed = !physics.failed;
+        result.dt        = physics.dt;
+        result.safeSpeed = physics.safeSpeed;
 
         // --- Stage 2: Scorer --------------------------------------------------
         ConfidenceContext context {

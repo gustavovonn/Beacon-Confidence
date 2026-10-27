@@ -50,11 +50,12 @@ private:
     BeaconConfidenceEngine<CartesianCoordinatePolicy> m_engine;
     std::map<long, double> m_minScores;
     bool silent;
+    bool calib;
 
 public:
     RunnerEngine(const std::string& motionModelName, const std::string& evaluatorName,
-                 const EngineConfig& engineConfig, bool silentMode = false)
-        : m_engine(motionModelName, evaluatorName, engineConfig), silent(silentMode) {}
+                 const EngineConfig& engineConfig, bool silentMode = false, bool calibMode = false)
+        : m_engine(motionModelName, evaluatorName, engineConfig), silent(silentMode), calib(calibMode) {}
 
     void reset() {
         m_engine.reset();
@@ -67,6 +68,15 @@ public:
 
     void processMessage(const ReceivedVector& rv) {
         const ConfidenceResult res = m_engine.onMotionVector(rv.sender, rv.mv);
+
+        // Calibration stream: dynamic-threshold features of evaluated vectors only.
+        if (calib) {
+            if (res.evaluated()) {
+                std::cout << rv.receiver << "," << rv.sender << "," << res.dt << ","
+                          << res.safeSpeed << "," << res.yawRateHat << "," << res.distError << "\n";
+            }
+            return;
+        }
 
         switch (res.disposition) {
         case VectorDisposition::Duplicate:
@@ -114,6 +124,7 @@ int main(int argc, char* argv[]) {
     std::string dirPath = "";
     bool profileMode = false;
     bool minScoresOnly = false;
+    bool calibMode = false;
 
     // Every field defaults to the paper-calibrated value from Constants.h;
     // the flags below override individual entries.
@@ -159,13 +170,15 @@ int main(int argc, char* argv[]) {
             profileMode = true;
         } else if (arg == "--min-scores") {
             minScoresOnly = true;
+        } else if (arg == "--calib") {
+            calibMode = true;
         } else if ((arg == "--historySize" || arg == "--history-size" || arg == "--history") && i + 1 < argc) {
             cfg.historyWindow = std::stoul(argv[++i]);
         }
     }
     
     if (dirPath.empty()) {
-        std::cerr << "Usage: " << argv[0] << " --dir <path> [--dr <model>] [--trust <model>] [--historySize <size>] [--profile] [--min-scores]\n";
+        std::cerr << "Usage: " << argv[0] << " --dir <path> [--dr <model>] [--trust <model>] [--historySize <size>] [--profile] [--min-scores] [--calib]\n";
         std::cerr << "Ablation flags: [--no-consistency] [--no-dyn-thresh] [--no-ols] [--no-dr]\n";
         return 1;
     }
@@ -184,7 +197,7 @@ int main(int argc, char* argv[]) {
 
     // 2. Initialize engine
     bool engineSilent = profileMode || minScoresOnly;
-    RunnerEngine engine(drModelName, trustModelName, cfg, engineSilent);
+    RunnerEngine engine(drModelName, trustModelName, cfg, engineSilent, calibMode);
 
     // 3. Process stream
     if (profileMode) {
@@ -240,7 +253,8 @@ int main(int argc, char* argv[]) {
             std::cout << sender << "," << sc << "\n";
         }
     } else {
-        std::cout << "rcvTime,receiver,sender,score,distError\n";
+        std::cout << (calibMode ? "receiver,sender,dt,safeSpeed,yawRateHat,distError\n"
+                                : "rcvTime,receiver,sender,score,distError\n");
         for (const auto& fpath : traceFiles) {
             auto msgs = loadMotionVectors(fpath);
             engine.reset();
