@@ -31,7 +31,6 @@ PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
 WORKSPACE_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "../.."))
 RUNNER_BIN = os.path.join(PROJECT_ROOT, "build", "veremi_runner")
 RESULTS_DIR = os.path.join(PROJECT_ROOT, "results", "scorers")
-ARTIFACTS_DIR = "/home/gust/.gemini/antigravity-ide/brain/32dd96fc-654f-4703-a7b9-044fdad23e23"
 
 ALL_0709_SCENARIOS = [
     "ConstPos_0709",
@@ -194,11 +193,7 @@ def main():
     print(f"\nSaved publication-ready PNG plot to: {png_out}")
     print(f"Saved publication-ready PDF vector to: {pdf_out}")
     
-    # Copy to artifacts for IDE viewing
-    if os.path.exists(ARTIFACTS_DIR):
-        artifact_png = os.path.join(ARTIFACTS_DIR, "scorer_roc_comparison.png")
-        shutil.copyfile(png_out, artifact_png)
-        print(f"Copied plot to artifacts directory: {artifact_png}")
+
 
 if __name__ == "__main__":
     main()

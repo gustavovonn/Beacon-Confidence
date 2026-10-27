@@ -21,7 +21,7 @@ detection-eval/
 │   ├── run_scorer_comparison.py         # BetaReputation vs. EWMA vs. MajorityVote comparison study
 │   ├── plot_scorer_roc.py               # Fused ROC comparison plot across the three scorers
 │   ├── run_checker_ablation.py          # Component ablation over the checker pipeline
-│   └── optimize_weights.py              # OLS regression to calibrate kinematic thresholds
+│   └── optimize_weights.py              # Quantile regression to calibrate kinematic thresholds
 └── results/                             # Evaluation outputs
     ├── plots/                           # Publication figures (.png and .pdf)
     ├── run_<timestamp>/                 # Raw metrics (.json) per scenario run
@@ -185,9 +185,9 @@ python scripts/run_veremi_batch.py --scenario ConstPosOffset_1416 --history-size
 ---
 
 ### D. Kinematic Parameter Optimization (`optimize_weights.py`)
-Fits Ordinary Least Squares (OLS) regression over honest baseline traces (`A0`) to calibrate context-aware error bounds:
+Fits a quantile regression (upper envelope, default q = 0.99) over messages from honest senders to calibrate context-aware error bounds:
 ```bash
-python scripts/optimize_weights.py
+python scripts/optimize_weights.py --scenario ConstPos_1416 --quantile 0.99
 ```
 Outputs calibrated `maxPosDev` (β₀), `speedWeight` (w_v), and `yawWeight` (w_yaw).
 
@@ -237,9 +237,9 @@ Run the native binary directly on a simulation directory:
     --dr HistoryAwareCTRA \
     --trust BetaReputation \
     --historySize 18 \
-    --maxPosDev 4.3506 \
-    --speedWeight 5.2264 \
-    --yawWeight 0.6536
+    --maxPosDev 2.3027 \
+    --speedWeight 0.6203 \
+    --yawWeight 0.7519
 
 # Run with high-resolution latency profiling:
 ./build/veremi_runner --dir /path/to/parquet/dir --profile --historySize 18
