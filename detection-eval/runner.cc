@@ -70,6 +70,10 @@ public:
 
         switch (res.disposition) {
         case VectorDisposition::Duplicate:
+            if (!silent && kEmitMessageOutput) {
+                std::cout << rv.mv.time << "," << rv.receiver << "," << rv.sender << ","
+                          << res.confidence << ",0.0\n";
+            }
             return;
 
         case VectorDisposition::FirstSighting:

@@ -98,8 +98,7 @@ def evaluate_simulation(sim_dir, scorer_flags, history_size=4, threshold=0.5):
     cmd = [
         RUNNER_BIN,
         "--dir", sim_dir,
-        "--historySize", str(history_size),
-        "--min-scores"
+        "--historySize", str(history_size)
     ] + scorer_flags
 
     proc = subprocess.run(cmd, capture_output=True, text=True)

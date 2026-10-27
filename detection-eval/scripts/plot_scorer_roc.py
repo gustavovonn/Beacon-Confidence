@@ -93,7 +93,6 @@ def run_simulation(sim_dir, scorer_id):
         RUNNER_BIN,
         "--dir", sim_dir,
         "--historySize", "4",
-        "--min-scores",
         "--trust", scorer_id
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True)
@@ -102,9 +101,9 @@ def run_simulation(sim_dir, scorer_id):
     df = pd.read_csv(io.StringIO(proc.stdout))
     if df.empty or "sender" not in df.columns:
         return None
-    df["is_attacker"] = df["sender"].isin(attackers).astype(int)
+    df["is_attacker"] = df["sender"].isin(attackers).astype("int8")
     # Anomaly score is 1.0 - trust score (lower trust -> higher anomaly)
-    df["anomaly_score"] = 1.0 - df["score"]
+    df["anomaly_score"] = (1.0 - df["score"]).astype("float32")
     return df[["is_attacker", "anomaly_score"]]
 
 def main():

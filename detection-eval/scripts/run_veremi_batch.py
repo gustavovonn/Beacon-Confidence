@@ -92,17 +92,14 @@ def process_scenario(dirs, runner_path, history_size=4, dr_model="HistoryAwareCT
             
         num_msgs = len(out_df)
 
-        # Group by sender to get min trust score
-        sender_scores = out_df.groupby('sender')['score'].min().reset_index()
-        
-        # Evaluate
-        sender_scores['is_attacker'] = sender_scores['sender'].isin(attackers)
-        sender_scores['predicted_attacker'] = sender_scores['score'] < threshold
-        
-        tp = int(((sender_scores['predicted_attacker'] == True) & (sender_scores['is_attacker'] == True)).sum())
-        fp = int(((sender_scores['predicted_attacker'] == True) & (sender_scores['is_attacker'] == False)).sum())
-        tn = int(((sender_scores['predicted_attacker'] == False) & (sender_scores['is_attacker'] == False)).sum())
-        fn = int(((sender_scores['predicted_attacker'] == False) & (sender_scores['is_attacker'] == True)).sum())
+        # Evaluate per received message (each reception is a detection event)
+        out_df['is_attacker'] = out_df['sender'].isin(attackers)
+        out_df['predicted_attacker'] = out_df['score'] < threshold
+
+        tp = int(((out_df['predicted_attacker'] == True) & (out_df['is_attacker'] == True)).sum())
+        fp = int(((out_df['predicted_attacker'] == True) & (out_df['is_attacker'] == False)).sum())
+        tn = int(((out_df['predicted_attacker'] == False) & (out_df['is_attacker'] == False)).sum())
+        fn = int(((out_df['predicted_attacker'] == False) & (out_df['is_attacker'] == True)).sum())
         
         all_metrics.append({
             'tp': tp,
