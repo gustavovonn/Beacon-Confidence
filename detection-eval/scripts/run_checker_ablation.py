@@ -37,6 +37,13 @@ WORKSPACE_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "../.."))
 RUNNER_BIN = os.path.join(PROJECT_ROOT, "build", "veremi_runner")
 RESULTS_DIR = os.path.join(PROJECT_ROOT, "results", "ablations")
 
+MECHANISM_CONSTANTS = os.path.join(WORKSPACE_ROOT, "include", "MechanismConstants.h")
+
+def header_history_window():
+    """W from DEFAULT_HISTORY_WINDOW in MechanismConstants.h, the single source of the default."""
+    with open(MECHANISM_CONSTANTS) as f:
+        return int(re.search(r"DEFAULT_HISTORY_WINDOW\s*=\s*(\d+)", f.read()).group(1))
+
 ALL_0709_SCENARIOS = [
     "ConstPos_0709",
     "ConstPosOffset_0709",
@@ -115,9 +122,11 @@ def find_parquet_dirs(scenario):
     seen = set()
     return [d for d in dirs if not (d in seen or seen.add(d))]
 
+# Labels span every hourly directory of the subset: receivers also log boundary
+# messages from senders whose trace file lives in the sibling directory.
 def extract_attackers(sim_dir):
     attackers = set()
-    for f in glob.glob(os.path.join(sim_dir, "traceJSON-*.parquet")):
+    for f in glob.glob(os.path.join(os.path.dirname(sim_dir), "VeReMi_*", "traceJSON-*.parquet")):
         m = re.match(r"traceJSON-(\d+)-\d+-A([0-9]+)-", os.path.basename(f))
         if m and int(m.group(2)) > 0:
             attackers.add(int(m.group(1)))
@@ -200,8 +209,8 @@ def main():
     parser = argparse.ArgumentParser(description="Run Checker Pipeline Ablation Study on 0709 Subsets")
     parser.add_argument("--scenarios", nargs="+", default=ALL_0709_SCENARIOS,
                         help="Specific 0709 scenarios to run (default: all 8)")
-    parser.add_argument("--history-size", type=int, default=4,
-                        help="History window size (default: 4)")
+    parser.add_argument("--history-size", type=int, default=header_history_window(),
+                        help="History window size (default: DEFAULT_HISTORY_WINDOW in MechanismConstants.h)")
     parser.add_argument("--threshold", type=float, default=0.5,
                         help="Trust threshold (default: 0.5)")
     parser.add_argument("--workers", type=int, default=6,

@@ -12,6 +12,13 @@ import numpy as np
 from io import StringIO
 from datetime import datetime
 
+MECHANISM_CONSTANTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "include", "MechanismConstants.h")
+
+def header_history_window():
+    """W from DEFAULT_HISTORY_WINDOW in MechanismConstants.h, the single source of the default."""
+    with open(MECHANISM_CONSTANTS) as f:
+        return int(re.search(r"DEFAULT_HISTORY_WINDOW\s*=\s*(\d+)", f.read()).group(1))
+
 def find_parquet_dirs(workspace_dir, scenario):
     candidates = [
         os.path.join(workspace_dir, "veremi-extension", "parquet", scenario, "VeReMi_*"),
@@ -39,6 +46,8 @@ def find_all_scenarios(workspace_dir):
                     scenarios.add(item)
     return sorted(list(scenarios))
 
+# Labels span every hourly directory of the subset: receivers also log boundary
+# messages from senders whose trace file lives in the sibling directory.
 def extract_attackers_from_filenames(d):
     """
     Extract attacker node IDs directly from the VeReMi traceJSON filenames.
@@ -46,7 +55,7 @@ def extract_attackers_from_filenames(d):
     A0 = Honest, A1+ = Attacker.
     """
     attackers = set()
-    files = glob.glob(os.path.join(d, "traceJSON-*.parquet"))
+    files = glob.glob(os.path.join(os.path.dirname(d), "VeReMi_*", "traceJSON-*.parquet"))
     for f in files:
         basename = os.path.basename(f)
         match = re.match(r"traceJSON-(\d+)-\d+-A([0-9]+)-", basename)
@@ -201,7 +210,7 @@ def main():
     parser.add_argument("--scenario", required=False, help="e.g. ConstPos_0709 (Required unless --sweep is used)")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of chunks to process")
     parser.add_argument("--sweep", action="store_true", help="Run across all scenarios")
-    parser.add_argument("--history-size", type=int, default=4, help="History size for veremi_runner (default: 4)")
+    parser.add_argument("--history-size", type=int, default=header_history_window(), help="History size for veremi_runner (default: DEFAULT_HISTORY_WINDOW in MechanismConstants.h)")
     parser.add_argument("--history-sweep", nargs="+", default=None, help="List of history sizes to sweep and compare (e.g. --history-sweep 5 10 20 or 5,10,20)")
     parser.add_argument("--dr", default="HistoryAwareCTRA", help="Dead reckoning model (default: HistoryAwareCTRA)")
     parser.add_argument("--trust", default="BetaReputation", help="Trust evaluator model (default: BetaReputation)")

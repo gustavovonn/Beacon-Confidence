@@ -210,7 +210,14 @@ BenchmarkResult runOlsCtraPipeline(const std::string& dataPath, const std::strin
     cfg.maxPosDev = maxPosDev;
     cfg.contextSpeedWeight = speedWeight;
     cfg.contextYawWeight = yawWeight;
-    OlsCtraEngine engine("HistoryAwareCTRA", "BetaReputation", cfg);
+
+    // One engine per observer, as in runF2mdPipeline: each OBU tracks its own neighbors.
+    std::map<long, std::unique_ptr<OlsCtraEngine>> engines;
+    auto engineFor = [&](long receiver) -> OlsCtraEngine& {
+        auto& e = engines[receiver];
+        if (!e) e = std::make_unique<OlsCtraEngine>("HistoryAwareCTRA", "BetaReputation", cfg);
+        return *e;
+    };
 
     double sum_s1_us = 0.0;
     double sum_s2_us = 0.0;
@@ -220,13 +227,13 @@ BenchmarkResult runOlsCtraPipeline(const std::string& dataPath, const std::strin
     if (tier == "1") {
         for (size_t i = 0; i < limit; ++i) {
             double s1 = 0.0;
-            probeStage1(engine, all_messages[i], &s1);
+            probeStage1(engineFor(all_messages[i].receiver), all_messages[i], &s1);
             sum_s1_us += s1;
         }
     } else if (tier == "2") {
         for (size_t i = 0; i < limit; ++i) {
             double s2 = 0.0;
-            probeStage2(engine, all_messages[i], 1.5, &s2);
+            probeStage2(engineFor(all_messages[i].receiver), all_messages[i], 1.5, &s2);
             sum_s2_us += s2;
         }
     } else {
@@ -234,7 +241,7 @@ BenchmarkResult runOlsCtraPipeline(const std::string& dataPath, const std::strin
         for (size_t i = 0; i < limit; ++i) {
             double s1 = 0.0, s2 = 0.0;
             StageTiming timing;
-            engine.onMotionVector(all_messages[i].sender, all_messages[i].mv, &timing);
+            engineFor(all_messages[i].receiver).onMotionVector(all_messages[i].sender, all_messages[i].mv, &timing);
             s1 = timing.predictor_us;
             s2 = timing.scorer_us;
             sum_s1_us += s1;

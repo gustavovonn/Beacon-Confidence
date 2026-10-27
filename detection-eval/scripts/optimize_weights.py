@@ -11,10 +11,16 @@ import glob
 import re
 import argparse
 
+def header_history_window():
+    """W from DEFAULT_HISTORY_WINDOW in MechanismConstants.h, the single source of the default."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "include", "MechanismConstants.h")
+    with open(path) as f:
+        return int(re.search(r"DEFAULT_HISTORY_WINDOW\s*=\s*(\d+)", f.read()).group(1))
+
 parser = argparse.ArgumentParser(description="Calibrate the dynamic threshold weights (paper Eq. 10).")
 parser.add_argument("--scenario", default="ConstPos_1416", help="Calibration scenario (default: ConstPos_1416)")
 parser.add_argument("--quantile", type=float, default=0.99, help="Upper-envelope quantile (default: 0.99)")
-parser.add_argument("--history-size", type=int, default=4, help="History window W (default: 4)")
+parser.add_argument("--history-size", type=int, default=header_history_window(), help="History window W (default: DEFAULT_HISTORY_WINDOW in MechanismConstants.h)")
 args = parser.parse_args()
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -28,9 +34,11 @@ if not source_dirs:
     print(f"No parquet directories found for {args.scenario}")
     exit(1)
 
+# Labels span every hourly directory of the subset: receivers also log boundary
+# messages from senders whose trace file lives in the sibling directory.
 def extract_attackers(d):
     attackers = set()
-    for f in glob.glob(os.path.join(d, "traceJSON-*.parquet")):
+    for f in glob.glob(os.path.join(os.path.dirname(d), "VeReMi_*", "traceJSON-*.parquet")):
         m = re.match(r"traceJSON-(\d+)-\d+-A([0-9]+)-", os.path.basename(f))
         if m and int(m.group(2)) > 0:
             attackers.add(int(m.group(1)))
