@@ -27,7 +27,7 @@ namespace ConstantsPhysics {
     // Reference: adopted from F2MD, which gates its own differential consistency
     // J. Kamel, M. R. Ansari, J. Petit, A. Kaiser, I. B. Jemaa, and P. Urien,
     // "Simulation framework for misbehavior detection in vehicular networks,"
-    constexpr double MAX_INTER_FRAME_TIME = 3.1;
+    constexpr double MAX_INTER_FRAME_TIME = 1.5;
 
     // -------------------------------------------------------------------------
     // Kinematic Plausibility and Standstill Noise Floor
@@ -57,11 +57,11 @@ namespace ConstantsPhysics {
     //   d_max = d_max_0 + w_v * v_safe * dt + w_w * |w| * v_safe
     // -------------------------------------------------------------------------
 
-    // Calibrated offline via OLS multiple linear regression over the fault-free
-    // subset (paper Sec. V-A).
-    constexpr double DEFAULT_MAX_POS_DEV = 4.3506;          // d_max_0 [m]
-    constexpr double DEFAULT_CONTEXT_SPEED_WEIGHT = 5.2264; // w_v (longitudinal displacement)
-    constexpr double DEFAULT_CONTEXT_YAW_WEIGHT = 0.6536;   // w_w (rotational factor)
+    // Calibrated offline via quantile regression (q = 0.99) over honest senders
+    // of ConstPos_1416 (optimize_weights.py; paper Sec. V-A).
+    constexpr double DEFAULT_MAX_POS_DEV = 2.3027;          // d_max_0 [m]
+    constexpr double DEFAULT_CONTEXT_SPEED_WEIGHT = 0.6203; // w_v (longitudinal displacement)
+    constexpr double DEFAULT_CONTEXT_YAW_WEIGHT = 0.7519;   // w_w (rotational factor)
 
     // Default Beta reputation filter inertia (effective memory horizon N_eff).
     // Reference: Jøsang (2002) exponential aging with λ = 0.90 (N_eff = 1 / (1 - λ) = 10).
